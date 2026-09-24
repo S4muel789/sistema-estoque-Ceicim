@@ -1,12 +1,14 @@
 import { createHash, randomBytes, scrypt as scryptCallback, timingSafeEqual } from "node:crypto";
 import { cookies } from "next/headers";
 import type { NextRequest, NextResponse } from "next/server";
-import { and, eq, gt } from "drizzle-orm";
+import { and, eq, gt, lte } from "drizzle-orm";
 import { getDb } from "@/db";
 import { sessions, users } from "@/db/schema";
 
 export const SESSION_COOKIE = "ceicim_session";
 const SESSION_TTL = 7 * 24 * 60 * 60 * 1000;
+export const PASSWORD_MIN_LENGTH = 10;
+export const PASSWORD_MAX_LENGTH = 128;
 
 export type AppUser = { id: number; name: string; username: string; role: "administrador" | "operador" };
 
@@ -22,6 +24,25 @@ export function normalizeUsername(value: string) {
 
 export function validUsername(value: string) {
   return /^[a-z0-9._-]{3,40}$/.test(value);
+}
+
+export function validPassword(value: string) {
+  return value.length >= PASSWORD_MIN_LENGTH && value.length <= PASSWORD_MAX_LENGTH;
+}
+
+export function isTrustedMutationRequest(request: Request) {
+  if (request.headers.get("sec-fetch-site") === "cross-site") return false;
+  const origin = request.headers.get("origin");
+  if (!origin) return true;
+  try {
+    return new URL(origin).host === new URL(request.url).host;
+  } catch {
+    return false;
+  }
+}
+
+export function untrustedRequest() {
+  return Response.json({ error: "Requisição bloqueada por segurança." }, { status: 403 });
 }
 
 export async function hashPassword(password: string) {
@@ -72,7 +93,9 @@ export async function getRequestUser(request: NextRequest) {
 export async function issueSession(response: NextResponse, userId: number) {
   const token = randomBytes(32).toString("base64url");
   const now = Date.now();
-  await getDb().insert(sessions).values({ tokenHash: tokenHash(token), userId, createdAt: now, expiresAt: now + SESSION_TTL });
+  const db = getDb();
+  await db.delete(sessions).where(lte(sessions.expiresAt, now));
+  await db.insert(sessions).values({ tokenHash: tokenHash(token), userId, createdAt: now, expiresAt: now + SESSION_TTL });
   response.cookies.set(SESSION_COOKIE, token, { httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "lax", path: "/", maxAge: SESSION_TTL / 1000 });
 }
 

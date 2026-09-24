@@ -2,12 +2,14 @@ import { eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { getDb } from "@/db";
 import { users } from "@/db/schema";
-import { issueSession, normalizeUsername, verifyPassword } from "@/lib/auth";
+import { isTrustedMutationRequest, issueSession, normalizeUsername, PASSWORD_MAX_LENGTH, untrustedRequest, verifyPassword } from "@/lib/auth";
 
 export async function POST(request: Request) {
+  if (!isTrustedMutationRequest(request)) return untrustedRequest();
   const payload = await request.json() as Record<string, unknown>;
   const username = normalizeUsername(String(payload.username ?? ""));
   const password = String(payload.password ?? "");
+  if (password.length > PASSWORD_MAX_LENGTH) return NextResponse.json({ error: "Usuário ou senha inválidos." }, { status: 401 });
   const db = getDb();
   const [user] = await db.select().from(users).where(eq(users.username, username)).limit(1);
   const now = Date.now();

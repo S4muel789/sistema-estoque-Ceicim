@@ -256,12 +256,13 @@ button { cursor: pointer; }
 .category-pill { display: inline-flex; padding: .28rem .55rem; border-radius: 7px; color: #496176; background: #eef3f6; font-size: .76rem; }
 .row-actions { display: flex; justify-content: flex-end; align-items: center; gap: .25rem; }
 .badge-ok, .badge-low, .visit-agendada, .visit-realizada, .visit-cancelada,
-.action-entrada, .action-saida, .action-cadastro, .action-edicao, .action-arquivamento, .action-desarquivamento { border: 0; font-weight: 700; }
+.action-entrada, .action-saida, .action-cadastro, .action-edicao, .action-arquivamento, .action-desarquivamento, .action-exclusao { border: 0; font-weight: 700; }
 .badge-ok, .visit-realizada, .action-entrada, .action-cadastro, .action-desarquivamento { color: #126b52; background: #dff5ec; }
 .badge-low, .visit-cancelada, .action-saida { color: #a63745; background: #fde9ec; }
 .visit-agendada { color: #115f7c; background: #e0f1f7; }
 .action-edicao { color: #6c55b8; background: #eee9fc; }
 .action-arquivamento { color: #6a6d72; background: #eceff2; }
+.action-exclusao { color: #a62d3a; background: #fde8eb; }
 .loading-line { display: flex; align-items: center; justify-content: center; gap: .6rem; min-height: 260px; color: #728195; }
 .spin { animation: spin 1s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }

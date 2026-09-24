@@ -1,4 +1,5 @@
-import { bigint, boolean, index, integer, pgTable, serial, text } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
+import { bigint, boolean, index, integer, pgTable, serial, text, uniqueIndex } from "drizzle-orm/pg-core";
 
 export const users = pgTable("users", {
   id: serial("id").primaryKey(),
@@ -31,7 +32,13 @@ export const inventoryItems = pgTable("inventory_items", {
   archivedAt: bigint("archived_at", { mode: "number" }),
   createdAt: bigint("created_at", { mode: "number" }).notNull(),
   updatedAt: bigint("updated_at", { mode: "number" }).notNull(),
-}, (table) => [index("idx_inventory_identity").on(table.normalizedName, table.normalizedCategory), index("idx_inventory_archived_at").on(table.archivedAt)]);
+}, (table) => [
+  index("idx_inventory_identity").on(table.normalizedName, table.normalizedCategory),
+  uniqueIndex("uq_inventory_active_identity")
+    .on(table.normalizedName, table.normalizedCategory)
+    .where(sql`${table.archivedAt} is null`),
+  index("idx_inventory_archived_at").on(table.archivedAt),
+]);
 
 export const inventoryMovements = pgTable("inventory_movements", {
   id: serial("id").primaryKey(),
@@ -58,4 +65,8 @@ export const visits = pgTable("visits", {
   notes: text("notes"),
   createdAt: bigint("created_at", { mode: "number" }).notNull(),
   updatedAt: bigint("updated_at", { mode: "number" }).notNull(),
-}, (table) => [index("idx_visits_date").on(table.visitDate), index("idx_visits_status").on(table.status)]);
+}, (table) => [
+  index("idx_visits_date").on(table.visitDate),
+  index("idx_visits_date_time").on(table.visitDate, table.startTime),
+  index("idx_visits_status").on(table.status),
+]);

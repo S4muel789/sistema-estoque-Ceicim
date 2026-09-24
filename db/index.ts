@@ -8,13 +8,18 @@ const globalForDb = globalThis as unknown as { ceicimPool?: Pool };
 function createPool() {
   const connectionString = process.env.DATABASE_URL;
   if (!connectionString) throw new Error("DATABASE_URL não foi configurada.");
-  const pool = new Pool({ connectionString, max: 5 });
+  const pool = new Pool({
+    connectionString,
+    max: 5,
+    connectionTimeoutMillis: 5_000,
+    idleTimeoutMillis: 30_000,
+  });
   attachDatabasePool(pool);
   return pool;
 }
 
 export function getDb() {
   const pool = globalForDb.ceicimPool ?? createPool();
-  if (process.env.NODE_ENV !== "production") globalForDb.ceicimPool = pool;
+  globalForDb.ceicimPool = pool;
   return drizzle(pool, { schema });
 }

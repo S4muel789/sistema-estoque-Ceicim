@@ -1,8 +1,8 @@
-import { and, asc, desc, eq, isNull } from "drizzle-orm";
+import { and, asc, desc, eq, gte, isNull, sql } from "drizzle-orm";
 import { NextRequest } from "next/server";
 import { getDb } from "@/db";
 import { inventoryItems, inventoryMovements, visits } from "@/db/schema";
-import { forbidden, getRequestUser, unauthorized } from "@/lib/auth";
+import { forbidden, getRequestUser, isTrustedMutationRequest, unauthorized, untrustedRequest } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 type Payload = Record<string, unknown> & { action?: string };
@@ -14,7 +14,7 @@ function invalid(message: string) { return Response.json({ error: message }, { s
 function errorMessage(error: unknown) {
   const message = error instanceof Error ? error.message : "Erro inesperado";
   if (message.includes("does not exist")) return "O banco do sistema ainda está sendo preparado. Tente novamente em instantes.";
-  return message;
+  return "Não foi possível concluir a operação. Tente novamente.";
 }
 
 export async function GET(request: NextRequest) {
@@ -27,11 +27,18 @@ export async function GET(request: NextRequest) {
       db.select().from(inventoryMovements).orderBy(desc(inventoryMovements.createdAt)).limit(300),
       db.select().from(visits).orderBy(asc(visits.visitDate), asc(visits.startTime)),
     ]);
-    return Response.json({ items, movements, visits: scheduledVisits });
-  } catch (error) { return Response.json({ error: errorMessage(error) }, { status: 500 }); }
+    return Response.json(
+      { items, movements, visits: scheduledVisits },
+      { headers: { "Cache-Control": "private, no-store" } },
+    );
+  } catch (error) {
+    console.error("[api/data:GET] Falha ao carregar dados", error);
+    return Response.json({ error: errorMessage(error) }, { status: 500 });
+  }
 }
 
 export async function POST(request: NextRequest) {
+  if (!isTrustedMutationRequest(request)) return untrustedRequest();
   const user = await getRequestUser(request);
   if (!user) return unauthorized();
   try {
@@ -45,24 +52,28 @@ export async function POST(request: NextRequest) {
       const name = clean(payload.name, 100); const category = clean(payload.category, 80);
       const quantity = numberValue(payload.quantity); const minStock = numberValue(payload.minStock);
       if (!name || !category) return invalid("Informe o nome e a categoria do item.");
-      if (quantity < 0 || minStock < 0) return invalid("As quantidades não podem ser negativas.");
+      if (quantity < 0) return invalid("A quantidade inicial não pode ser negativa.");
+      if (minStock < 2) return invalid("O estoque mínimo deve ser de pelo menos 2 unidades.");
       const normalizedName = normalize(name); const normalizedCategory = normalize(category);
       const [existing] = await db.select().from(inventoryItems).where(and(eq(inventoryItems.normalizedName, normalizedName), eq(inventoryItems.normalizedCategory, normalizedCategory), isNull(inventoryItems.archivedAt))).limit(1);
       if (existing) {
         await db.transaction(async (tx) => {
-          await tx.update(inventoryItems).set({ quantity: existing.quantity + quantity, minStock, updatedAt: now }).where(eq(inventoryItems.id, existing.id));
+          await tx.update(inventoryItems).set({ quantity: sql`${inventoryItems.quantity} + ${quantity}`, minStock, updatedAt: now }).where(eq(inventoryItems.id, existing.id));
           await tx.insert(inventoryMovements).values({ itemId: existing.id, itemName: existing.name, action: "entrada", quantity, notes: "Quantidade adicionada ao item já cadastrado", actorName: user.name, createdAt: now });
         });
         return Response.json({ message: "Quantidade somada ao item já existente.", merged: true });
       }
-      const [item] = await db.insert(inventoryItems).values({ name, category, normalizedName, normalizedCategory, quantity, minStock, createdAt: now, updatedAt: now }).returning();
-      await db.insert(inventoryMovements).values({ itemId: item.id, itemName: item.name, action: "cadastro", quantity, notes: "Item cadastrado no estoque", actorName: user.name, createdAt: now });
+      const [item] = await db.transaction(async (tx) => {
+        const [created] = await tx.insert(inventoryItems).values({ name, category, normalizedName, normalizedCategory, quantity, minStock, createdAt: now, updatedAt: now }).returning();
+        await tx.insert(inventoryMovements).values({ itemId: created.id, itemName: created.name, action: "cadastro", quantity, notes: "Item cadastrado no estoque", actorName: user.name, createdAt: now });
+        return [created];
+      });
       return Response.json({ item, message: "Item cadastrado com sucesso." }, { status: 201 });
     }
 
     if (payload.action === "update_item") {
       const id = numberValue(payload.id); const name = clean(payload.name, 100); const category = clean(payload.category, 80); const minStock = numberValue(payload.minStock);
-      if (!id || !name || !category || minStock < 0) return invalid("Revise os dados do item.");
+      if (!id || !name || !category || minStock < 2) return invalid("Revise os dados do item. O estoque mínimo deve ser de pelo menos 2 unidades.");
       const [item] = await db.select().from(inventoryItems).where(eq(inventoryItems.id, id)).limit(1);
       if (!item) return invalid("Item não encontrado.");
       await db.transaction(async (tx) => {
@@ -79,12 +90,23 @@ export async function POST(request: NextRequest) {
       if (type === "saida" && (!sector || !recipient)) return invalid("Na saída, informe o setor e o nome de quem recebeu.");
       const [item] = await db.select().from(inventoryItems).where(eq(inventoryItems.id, id)).limit(1);
       if (!item || item.archivedAt) return invalid("Item ativo não encontrado.");
-      if (type === "saida" && quantity > item.quantity) return invalid(`Saída bloqueada: o saldo disponível é ${item.quantity}.`);
-      const nextQuantity = type === "entrada" ? item.quantity + quantity : item.quantity - quantity;
-      await db.transaction(async (tx) => {
-        await tx.update(inventoryItems).set({ quantity: nextQuantity, updatedAt: now }).where(eq(inventoryItems.id, id));
+      const movementSaved = await db.transaction(async (tx) => {
+        const [updated] = await tx.update(inventoryItems)
+          .set({
+            quantity: type === "entrada"
+              ? sql`${inventoryItems.quantity} + ${quantity}`
+              : sql`${inventoryItems.quantity} - ${quantity}`,
+            updatedAt: now,
+          })
+          .where(type === "entrada"
+            ? and(eq(inventoryItems.id, id), isNull(inventoryItems.archivedAt))
+            : and(eq(inventoryItems.id, id), isNull(inventoryItems.archivedAt), gte(inventoryItems.quantity, quantity)))
+          .returning({ id: inventoryItems.id });
+        if (!updated) return false;
         await tx.insert(inventoryMovements).values({ itemId: id, itemName: item.name, action: type, quantity, sector: type === "saida" ? sector : null, recipient: type === "saida" ? recipient : null, notes: notes || null, actorName: user.name, createdAt: now });
+        return true;
       });
+      if (!movementSaved) return invalid(`Saída bloqueada: o saldo disponível é ${item.quantity}. Atualize a página e tente novamente.`);
       return Response.json({ message: type === "entrada" ? "Entrada registrada." : "Saída registrada." });
     }
 
@@ -92,6 +114,11 @@ export async function POST(request: NextRequest) {
       const id = numberValue(payload.id); const [item] = await db.select().from(inventoryItems).where(eq(inventoryItems.id, id)).limit(1);
       if (!item) return invalid("Item não encontrado.");
       const archiving = payload.action === "archive_item";
+      if (archiving && item.quantity !== 0) return invalid("Zere o saldo do item antes de arquivá-lo.");
+      if (!archiving) {
+        const [activeDuplicate] = await db.select({ id: inventoryItems.id }).from(inventoryItems).where(and(eq(inventoryItems.normalizedName, item.normalizedName), eq(inventoryItems.normalizedCategory, item.normalizedCategory), isNull(inventoryItems.archivedAt))).limit(1);
+        if (activeDuplicate && activeDuplicate.id !== item.id) return invalid("Já existe um item ativo com o mesmo nome e categoria.");
+      }
       await db.transaction(async (tx) => {
         await tx.update(inventoryItems).set({ archivedAt: archiving ? now : null, updatedAt: now }).where(eq(inventoryItems.id, id));
         await tx.insert(inventoryMovements).values({ itemId: id, itemName: item.name, action: archiving ? "arquivamento" : "desarquivamento", quantity: 0, actorName: user.name, createdAt: now });
@@ -102,8 +129,12 @@ export async function POST(request: NextRequest) {
     if (payload.action === "delete_archived_item") {
       const id = numberValue(payload.id); const [item] = await db.select().from(inventoryItems).where(eq(inventoryItems.id, id)).limit(1);
       if (!item?.archivedAt) return invalid("O item precisa estar arquivado.");
+      if (item.quantity !== 0) return invalid("A exclusão só é permitida para itens com saldo zerado.");
       if (now - item.archivedAt < 21 * 24 * 60 * 60 * 1000) return invalid("A exclusão é liberada somente após 21 dias de arquivamento.");
-      await db.delete(inventoryItems).where(eq(inventoryItems.id, id));
+      await db.transaction(async (tx) => {
+        await tx.insert(inventoryMovements).values({ itemId: id, itemName: item.name, action: "exclusao", quantity: 0, notes: "Item excluído definitivamente após 21 dias arquivado", actorName: user.name, createdAt: now });
+        await tx.delete(inventoryItems).where(eq(inventoryItems.id, id));
+      });
       return Response.json({ message: "Item excluído definitivamente." });
     }
 
@@ -129,5 +160,8 @@ export async function POST(request: NextRequest) {
     }
 
     return invalid("Ação não reconhecida.");
-  } catch (error) { return Response.json({ error: errorMessage(error) }, { status: 500 }); }
+  } catch (error) {
+    console.error("[api/data:POST] Falha ao alterar dados", error);
+    return Response.json({ error: errorMessage(error) }, { status: 500 });
+  }
 }

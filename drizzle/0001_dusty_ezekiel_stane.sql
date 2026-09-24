@@ -1,0 +1,2 @@
+CREATE UNIQUE INDEX "uq_inventory_active_identity" ON "inventory_items" USING btree ("normalized_name","normalized_category") WHERE "inventory_items"."archived_at" is null;--> statement-breakpoint
+CREATE INDEX "idx_visits_date_time" ON "visits" USING btree ("visit_date","start_time");

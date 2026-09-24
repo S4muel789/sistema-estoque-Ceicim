@@ -22,6 +22,7 @@ import {
   RefreshCw,
   RotateCcw,
   Search,
+  ShieldCheck,
   Sparkles,
   Trash2,
   TriangleAlert,
@@ -186,6 +187,7 @@ function actionLabel(action: string) {
     edicao: "Edição",
     arquivamento: "Arquivamento",
     desarquivamento: "Desarquivamento",
+    exclusao: "Exclusão",
   };
   return labels[action] ?? action;
 }
@@ -338,8 +340,17 @@ export default function Dashboard({ user }: { user: CurrentUser }) {
   const activeItems = useMemo(() => data.items.filter((item) => !item.archivedAt), [data.items]);
   const archivedItems = useMemo(() => data.items.filter((item) => item.archivedAt), [data.items]);
   const lowStockItems = useMemo(() => activeItems.filter((item) => item.quantity <= item.minStock), [activeItems]);
+  const visitsByDate = useMemo(() => {
+    const grouped = new Map<string, Visit[]>();
+    for (const visit of data.visits) {
+      const current = grouped.get(visit.visitDate);
+      if (current) current.push(visit);
+      else grouped.set(visit.visitDate, [visit]);
+    }
+    return grouped;
+  }, [data.visits]);
   const today = dateKey(new Date());
-  const todayVisits = data.visits.filter((visit) => visit.visitDate === today && visit.status !== "cancelada");
+  const todayVisits = (visitsByDate.get(today) ?? []).filter((visit) => visit.status !== "cancelada");
   const upcomingVisits = data.visits
     .filter((visit) => visit.visitDate >= today && visit.status === "agendada")
     .slice(0, 5);
@@ -348,9 +359,12 @@ export default function Dashboard({ user }: { user: CurrentUser }) {
     .filter((visit) => visit.visitDate.startsWith(monthKey) && visit.status !== "cancelada")
     .reduce((total, visit) => total + visit.visitors, 0);
 
-  const filteredItems = activeItems.filter((item) =>
-    `${item.name} ${item.category}`.toLocaleLowerCase("pt-BR").includes(query.toLocaleLowerCase("pt-BR"))
-  );
+  const filteredItems = useMemo(() => {
+    const normalizedQuery = query.toLocaleLowerCase("pt-BR");
+    return activeItems.filter((item) =>
+      `${item.name} ${item.category}`.toLocaleLowerCase("pt-BR").includes(normalizedQuery)
+    );
+  }, [activeItems, query]);
 
   const monthDays = useMemo(() => {
     const year = monthCursor.getFullYear();
@@ -365,7 +379,7 @@ export default function Dashboard({ user }: { user: CurrentUser }) {
     return cells;
   }, [monthCursor]);
 
-  const selectedVisits = data.visits.filter((visit) => visit.visitDate === selectedDate);
+  const selectedVisits = visitsByDate.get(selectedDate) ?? [];
   const historySize = 12;
   const historyPages = Math.max(1, Math.ceil(data.movements.length / historySize));
   const pagedMovements = data.movements.slice((historyPage - 1) * historySize, historyPage * historySize);
@@ -493,6 +507,7 @@ export default function Dashboard({ user }: { user: CurrentUser }) {
             <div><span>Centro Educacional Inovação de Ciências</span><h1>{headerTitle}</h1></div>
           </div>
           <div className="topbar-actions">
+            <span className="today-chip"><ShieldCheck />Ambiente protegido</span>
             <span className="today-chip"><CalendarDays />{todayLabel()}</span>
             <Button variant="outline" onClick={() => window.location.assign("/api/inventory/pdf")}><FileDown /><span className="action-label">Baixar estoque PDF</span></Button>
             <Button variant="outline" size="icon" onClick={() => void loadData(true)} aria-label="Atualizar dados"><RefreshCw /></Button>
@@ -560,7 +575,7 @@ export default function Dashboard({ user }: { user: CurrentUser }) {
                     <TableBody>
                       {filteredItems.map((item) => {
                         const low = item.quantity <= item.minStock;
-                        return <TableRow key={item.id}><TableCell><span className="category-pill">{item.category}</span></TableCell><TableCell className="font-semibold">{item.name}</TableCell><TableCell className="text-center text-base font-bold">{item.quantity}</TableCell><TableCell className="text-center">{item.minStock}</TableCell><TableCell><Badge className={low ? "badge-low" : "badge-ok"}>{low ? "Estoque baixo" : "Disponível"}</Badge></TableCell><TableCell><div className="row-actions">{isAdmin ? <><Button variant="ghost" size="icon-sm" aria-label={`Editar ${item.name}`} onClick={() => { setEditingItem(item); setItemDialog(true); }}><Pencil /></Button><Button variant="ghost" size="icon-sm" aria-label={`Arquivar ${item.name}`} onClick={() => setArchiveTarget(item)}><Archive /></Button></> : <span className="operator-note">Somente consulta</span>}</div></TableCell></TableRow>;
+                        return <TableRow key={item.id}><TableCell><span className="category-pill">{item.category}</span></TableCell><TableCell className="font-semibold">{item.name}</TableCell><TableCell className="text-center text-base font-bold">{item.quantity}</TableCell><TableCell className="text-center">{item.minStock}</TableCell><TableCell><Badge className={low ? "badge-low" : "badge-ok"}>{low ? "Estoque baixo" : "Disponível"}</Badge></TableCell><TableCell><div className="row-actions">{isAdmin ? <><Button variant="ghost" size="icon-sm" aria-label={`Editar ${item.name}`} onClick={() => { setEditingItem(item); setItemDialog(true); }}><Pencil /></Button><Button variant="ghost" size="icon-sm" disabled={item.quantity !== 0} title={item.quantity === 0 ? "Arquivar item" : "Zere o saldo antes de arquivar"} aria-label={`Arquivar ${item.name}`} onClick={() => setArchiveTarget(item)}><Archive /></Button></> : <span className="operator-note">Somente consulta</span>}</div></TableCell></TableRow>;
                       })}
                     </TableBody>
                   </Table>
@@ -603,7 +618,7 @@ export default function Dashboard({ user }: { user: CurrentUser }) {
                   <div className="calendar-grid days-grid">
                     {monthDays.map(({ date, current }) => {
                       const key = dateKey(date);
-                      const visits = data.visits.filter((visit) => visit.visitDate === key);
+                      const visits = visitsByDate.get(key) ?? [];
                       const isToday = key === today;
                       return <button key={key} className={`calendar-day ${current ? "" : "outside"} ${selectedDate === key ? "selected" : ""}`} onClick={() => setSelectedDate(key)}><span className={isToday ? "today-number" : ""}>{date.getDate()}</span><div className="calendar-events">{visits.slice(0, 2).map((visit) => <small key={visit.id} className={`event-${visit.status}`}>{visit.startTime} {visit.institution}</small>)}{visits.length > 2 && <small className="more-events">+{visits.length - 2} visita(s)</small>}</div></button>;
                     })}
@@ -619,11 +634,11 @@ export default function Dashboard({ user }: { user: CurrentUser }) {
 
           {view === "arquivados" && (
             <section className="view-stack">
-              <div className="section-actions"><div><p className="eyebrow">Administração</p><h2>Itens arquivados</h2><p>Itens podem ser restaurados a qualquer momento. A exclusão definitiva só é liberada após 21 dias.</p></div></div>
+              <div className="section-actions"><div><p className="eyebrow">Administração</p><h2>Itens arquivados</h2><p>Somente administradores podem excluir. O item precisa ter saldo zerado e permanecer arquivado por 21 dias; o histórico é preservado.</p></div></div>
               <article className="panel table-panel">
                 {archivedItems.length ? <Table><TableHeader><TableRow><TableHead>Item</TableHead><TableHead>Categoria</TableHead><TableHead className="text-center">Saldo</TableHead><TableHead>Arquivado em</TableHead><TableHead className="text-right">Ações</TableHead></TableRow></TableHeader><TableBody>{archivedItems.map((item) => {
-                  const canDelete = renderTime - (item.archivedAt ?? renderTime) >= 21 * 24 * 60 * 60 * 1000;
-                  return <TableRow key={item.id}><TableCell className="font-semibold">{item.name}</TableCell><TableCell>{item.category}</TableCell><TableCell className="text-center">{item.quantity}</TableCell><TableCell>{item.archivedAt ? formatDateTime(item.archivedAt) : "—"}</TableCell><TableCell><div className="row-actions">{isAdmin ? <><Button variant="outline" size="sm" onClick={() => void runAction({ action: "unarchive_item", id: item.id })}><RotateCcw />Restaurar</Button><Button variant="ghost" size="icon-sm" disabled={!canDelete} title={canDelete ? "Excluir definitivamente" : "Disponível após 21 dias"} onClick={() => setDeleteTarget(item)}><Trash2 /></Button></> : <span className="operator-note">Somente consulta</span>}</div></TableCell></TableRow>;
+                  const canDelete = item.quantity === 0 && renderTime - (item.archivedAt ?? renderTime) >= 21 * 24 * 60 * 60 * 1000;
+                  return <TableRow key={item.id}><TableCell className="font-semibold">{item.name}</TableCell><TableCell>{item.category}</TableCell><TableCell className="text-center">{item.quantity}</TableCell><TableCell>{item.archivedAt ? formatDateTime(item.archivedAt) : "—"}</TableCell><TableCell><div className="row-actions">{isAdmin ? <><Button variant="outline" size="sm" onClick={() => void runAction({ action: "unarchive_item", id: item.id })}><RotateCcw />Restaurar</Button><Button variant="ghost" size="icon-sm" disabled={!canDelete} title={item.quantity !== 0 ? "A exclusão exige saldo zerado" : canDelete ? "Excluir definitivamente" : "Disponível após 21 dias"} onClick={() => setDeleteTarget(item)}><Trash2 /></Button></> : <span className="operator-note">Somente consulta</span>}</div></TableCell></TableRow>;
                 })}</TableBody></Table> : <EmptyState icon={Archive} title="Nenhum item arquivado" text="Os itens retirados do estoque ativo aparecerão aqui." />}
               </article>
             </section>
@@ -640,7 +655,7 @@ export default function Dashboard({ user }: { user: CurrentUser }) {
             <label className="field full"><span>Nome do item</span><Input name="name" defaultValue={editingItem?.name} placeholder="Ex.: Cabo HDMI" required autoFocus /></label>
             <label className="field full"><span>Categoria</span><Input name="category" defaultValue={editingItem?.category} placeholder="Ex.: Cabos e adaptadores" required /></label>
             {!editingItem && <label className="field"><span>Quantidade inicial</span><Input name="quantity" type="number" min="0" defaultValue="1" required /></label>}
-            <label className="field"><span>Estoque mínimo</span><Input name="minStock" type="number" min="0" defaultValue={editingItem?.minStock ?? 4} required /></label>
+            <label className="field"><span>Estoque mínimo</span><Input name="minStock" type="number" min="2" defaultValue={editingItem?.minStock ?? 4} required /></label>
             <DialogFooter className="full"><Button type="button" variant="outline" onClick={() => setItemDialog(false)}>Cancelar</Button><Button type="submit" disabled={busy}>{busy ? "Salvando..." : editingItem ? "Salvar alterações" : "Cadastrar item"}</Button></DialogFooter>
           </form>
         </DialogContent>
@@ -664,11 +679,11 @@ export default function Dashboard({ user }: { user: CurrentUser }) {
       </Dialog>
 
       <AlertDialog open={!!archiveTarget} onOpenChange={(open) => !open && setArchiveTarget(null)}>
-        <AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Arquivar {archiveTarget?.name}?</AlertDialogTitle><AlertDialogDescription>O item sairá do estoque ativo, mas poderá ser restaurado na página de arquivados.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Cancelar</AlertDialogCancel><AlertDialogAction onClick={() => archiveTarget && void runAction({ action: "archive_item", id: archiveTarget.id }, () => setArchiveTarget(null))}>Arquivar item</AlertDialogAction></AlertDialogFooter></AlertDialogContent>
+        <AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Arquivar {archiveTarget?.name}?</AlertDialogTitle><AlertDialogDescription>Somente administradores podem arquivar e o saldo deve estar zerado. O item sairá do estoque ativo, mas poderá ser restaurado.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Cancelar</AlertDialogCancel><AlertDialogAction onClick={() => archiveTarget && void runAction({ action: "archive_item", id: archiveTarget.id }, () => setArchiveTarget(null))}>Arquivar item</AlertDialogAction></AlertDialogFooter></AlertDialogContent>
       </AlertDialog>
 
       <AlertDialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>
-        <AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Excluir definitivamente?</AlertDialogTitle><AlertDialogDescription>Esta ação removerá {deleteTarget?.name} do cadastro e não poderá ser desfeita. O histórico das movimentações será preservado.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Cancelar</AlertDialogCancel><AlertDialogAction variant="destructive" onClick={() => deleteTarget && void runAction({ action: "delete_archived_item", id: deleteTarget.id }, () => setDeleteTarget(null))}>Excluir item</AlertDialogAction></AlertDialogFooter></AlertDialogContent>
+        <AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Excluir definitivamente?</AlertDialogTitle><AlertDialogDescription>Esta ação é exclusiva de administrador e só é liberada após 21 dias com saldo zerado. O cadastro de {deleteTarget?.name} será removido, mas o histórico de auditoria será preservado.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Cancelar</AlertDialogCancel><AlertDialogAction variant="destructive" onClick={() => deleteTarget && void runAction({ action: "delete_archived_item", id: deleteTarget.id }, () => setDeleteTarget(null))}>Excluir item</AlertDialogAction></AlertDialogFooter></AlertDialogContent>
       </AlertDialog>
 
       <Toaster richColors position="top-right" />

@@ -56,7 +56,7 @@ export default function LoginForm() {
             <form onSubmit={submit} className="login-form">
               {needsSetup && <><label className="field"><span>Nome completo</span><Input name="name" autoComplete="name" required /></label><label className="field"><span>Código de ativação</span><Input name="setupKey" type="password" required /></label></>}
               <label className="field"><span>Usuário</span><Input name="username" autoComplete="username" placeholder="ex.: samuel" required autoFocus={!needsSetup} /></label>
-              <label className="field"><span>Senha</span><Input name="password" type="password" minLength={8} autoComplete={needsSetup ? "new-password" : "current-password"} required /></label>
+              <label className="field"><span>Senha</span><Input name="password" type="password" minLength={needsSetup ? 10 : undefined} maxLength={128} autoComplete={needsSetup ? "new-password" : "current-password"} required /></label>
               {error && <div className="login-error">{error}</div>}
               <Button type="submit" size="lg" disabled={busy}>{busy ? <><LoaderCircle className="spin" /> Aguarde...</> : needsSetup ? "Criar conta e entrar" : "Entrar"}</Button>
             </form>

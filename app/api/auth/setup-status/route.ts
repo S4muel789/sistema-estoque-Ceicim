@@ -9,6 +9,7 @@ export async function GET() {
     const [result] = await getDb().select({ value: count() }).from(users);
     return Response.json({ needsSetup: result.value === 0 });
   } catch (error) {
-    return Response.json({ error: error instanceof Error ? error.message : "Banco indisponível." }, { status: 500 });
+    console.error("[auth/setup-status] Falha ao consultar configuração inicial", error);
+    return Response.json({ error: "Não foi possível verificar a configuração do sistema." }, { status: 500 });
   }
 }

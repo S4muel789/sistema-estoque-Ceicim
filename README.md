@@ -11,7 +11,7 @@ O projeto nasceu de uma necessidade real do estágio: substituir controles infor
 - Aplicação concluída e compilada com sucesso.
 - Banco PostgreSQL criado e estrutura validada.
 - Relatório PDF gerado e conferido visualmente.
-- Publicação na Vercel pendente da autorização de implantação da conta proprietária.
+- Aplicação publicada na Vercel e conectada ao PostgreSQL do Neon.
 - Nenhuma senha, chave ou URL privada de banco é armazenada neste repositório.
 
 ## Principais funcionalidades
@@ -25,7 +25,8 @@ O projeto nasceu de uma necessidade real do estágio: substituir controles infor
 - Setor de destino e nome de quem recebeu o material.
 - Estoque mínimo e alerta visual de baixo estoque.
 - Histórico com data, hora, ação e usuário responsável.
-- Arquivamento, restauração e exclusão definitiva após 21 dias.
+- Arquivamento somente com saldo zerado e exclusão definitiva pelo administrador após 21 dias.
+- Histórico de auditoria preservado mesmo após a exclusão definitiva do cadastro.
 - Calendário para agendamento de visitas.
 - Situações de visita: agendada, realizada e cancelada.
 - Download do estoque ativo em PDF A4.
@@ -65,7 +66,9 @@ flowchart TD
   API --> PDF[Relatório PDF]
 ```
 
-As senhas são protegidas com `scrypt`. A sessão utiliza token aleatório armazenado no banco somente como hash e enviado ao navegador em cookie `HttpOnly`, `SameSite=Lax` e `Secure` em produção.
+As senhas são protegidas com `scrypt`. A sessão utiliza token aleatório armazenado no banco somente como hash e enviado ao navegador em cookie `HttpOnly`, `SameSite=Lax` e `Secure` em produção. As alterações são protegidas contra requisições originadas em outros sites, e a aplicação envia cabeçalhos de segurança contra incorporação, detecção incorreta de conteúdo e downgrade de HTTPS.
+
+Para preservar a integridade do estoque, as alterações de saldo usam transações e atualizações atômicas. Um índice exclusivo impede mais de um item ativo com a mesma combinação normalizada de nome e categoria. A conexão PostgreSQL é reutilizada entre requisições para reduzir latência e o número de conexões abertas.
 
 ## Estrutura principal
 

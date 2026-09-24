@@ -27,7 +27,7 @@ Durante o desenvolvimento, os requisitos foram refinados conforme o uso e a aval
 - Itens repetidos passaram a somar quantidades em vez de criar outra linha.
 - A saída passou a exigir setor de destino e pessoa que recebeu.
 - Itens retirados do uso passaram para uma área de arquivados.
-- A exclusão definitiva foi limitada ao administrador e liberada após 21 dias.
+- A exclusão definitiva foi limitada ao administrador e liberada após 21 dias, somente com saldo zerado e preservação do histórico.
 
 ## 3. Primeira arquitetura
 
@@ -50,7 +50,7 @@ O site anterior foi mantido durante o processo para evitar interrupção e perda
 
 Foram implementados os seguintes controles:
 
-- Nome de usuário individual e senha mínima de oito caracteres.
+- Nome de usuário individual e senha mínima de dez caracteres para novas contas e redefinições.
 - Hash de senha com `scrypt` e salt aleatório.
 - Token de sessão aleatório de 256 bits.
 - Apenas o hash do token fica armazenado no banco.
@@ -60,6 +60,8 @@ Foram implementados os seguintes controles:
 - Primeiro administrador criado por fluxo de ativação com código secreto.
 - Usuário desativado perde as sessões abertas.
 - Rotas do servidor conferem a permissão, independentemente do que aparece na interface.
+- Requisições de alteração vindas de outro site são bloqueadas.
+- Cabeçalhos de segurança impedem incorporação em `iframe`, forçam HTTPS e reduzem a exposição de dados do navegador.
 
 ## 6. Modelo de permissões
 
@@ -88,7 +90,19 @@ Foram criadas cinco tabelas:
 
 Índices foram adicionados nos campos mais usados para autenticação, histórico, identidade de itens, datas e situações.
 
-## 8. Relatório em PDF
+A identidade normalizada de um item ativo possui índice exclusivo. Assim, mesmo com dois usuários trabalhando ao mesmo tempo, o banco impede duplicatas de nome e categoria. Entradas e saídas atualizam o saldo de forma atômica dentro de transações; uma saída concorrente também não consegue reduzir o estoque abaixo de zero.
+
+## 8. Regras de arquivamento e exclusão
+
+O fluxo de retirada foi desenhado para evitar apagamentos acidentais:
+
+1. Apenas administradores podem arquivar, restaurar ou excluir.
+2. O item só pode ser arquivado quando o saldo está zerado.
+3. A exclusão definitiva só é liberada depois de 21 dias arquivado.
+4. Antes da remoção, o sistema registra a ação, o usuário e o horário.
+5. As movimentações anteriores permanecem no histórico mesmo após a exclusão do cadastro.
+
+## 9. Relatório em PDF
 
 O estoque ativo pode ser baixado em PDF. O documento possui:
 
@@ -103,7 +117,7 @@ O estoque ativo pode ser baixado em PDF. O documento possui:
 
 O relatório foi testado com 38 itens distribuídos em três páginas e renderizado em imagem para inspeção visual.
 
-## 9. Validação técnica
+## 10. Validação técnica
 
 Foram executadas as seguintes verificações:
 
@@ -119,13 +133,11 @@ Foram executadas as seguintes verificações:
 
 O ambiente local de execução não conseguiu resolver diretamente o endereço externo do Neon por restrição de rede. A criação e a inspeção do banco foram realizadas pelo canal autorizado do provedor.
 
-## 10. Implantação
+## 11. Implantação
 
-O projeto e as variáveis foram preparados para a Vercel. A primeira tentativa criou a estrutura do projeto, mas a conexão disponível retornou `403` ao tentar criar novas implantações de produção ou prévia.
+O projeto foi publicado na Vercel e conectado ao banco PostgreSQL do Neon por variáveis secretas. O repositório não guarda a URL do banco nem o código de ativação.
 
-Assim, a aplicação está pronta para publicação, restando conceder à integração a permissão de criar deployments ou realizar a publicação com a conta proprietária da equipe Vercel.
-
-## 11. Cuidados para publicação
+## 12. Cuidados para publicação
 
 Antes de colocar o sistema em produção:
 
@@ -137,6 +149,6 @@ Antes de colocar o sistema em produção:
 6. Cadastrar cada operador com conta própria.
 7. Testar entrada, saída, agenda e PDF no domínio de produção.
 
-## 12. Resultado
+## 13. Resultado
 
-O projeto evoluiu de uma validação rápida de estoque e agenda para uma aplicação completa com autenticação individual, autorização por perfil, rastreabilidade, banco relacional e geração de documentos. A arquitetura final permite o uso por várias pessoas sem compartilhar uma única senha.
+O projeto evoluiu de uma validação rápida de estoque e agenda para uma aplicação completa com autenticação individual, autorização por perfil, rastreabilidade, banco relacional e geração de documentos. A arquitetura final permite o uso por várias pessoas sem compartilhar uma única senha, preserva a integridade do saldo sob acessos simultâneos e reutiliza conexões com o banco para responder com menor latência.
