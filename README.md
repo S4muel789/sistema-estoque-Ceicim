@@ -19,7 +19,9 @@ O projeto nasceu de uma necessidade real do estágio: substituir controles infor
 - Login individual com usuário e senha.
 - Perfis de acesso `administrador` e `operador`.
 - Cadastro e pesquisa de materiais por nome e categoria.
-- Soma automática quando um item da mesma categoria já existe.
+- Organização física pelos armários numerados de 1 a 18.
+- Tela própria com a lista e a quantidade guardada em cada armário.
+- Soma automática quando um item com o mesmo nome, categoria e armário já existe.
 - Registro de entradas e saídas.
 - Bloqueio de saída acima do saldo disponível.
 - Setor de destino e nome de quem recebeu o material.
@@ -37,7 +39,7 @@ O projeto nasceu de uma necessidade real do estágio: substituir controles infor
 | Ação | Administrador | Operador |
 | --- | :---: | :---: |
 | Consultar estoque, agenda e histórico | ✅ | ✅ |
-| Cadastrar item | ✅ | ✅ |
+| Cadastrar item e indicar o armário | ✅ | ✅ |
 | Registrar entrada e saída | ✅ | ✅ |
 | Criar e atualizar visitas | ✅ | ✅ |
 | Baixar estoque em PDF | ✅ | ✅ |

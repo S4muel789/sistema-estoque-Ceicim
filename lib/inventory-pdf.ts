@@ -1,17 +1,18 @@
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from "pdf-lib";
 
-export type PdfInventoryItem = { name: string; category: string; quantity: number; minStock: number };
+export type PdfInventoryItem = { name: string; category: string; cabinetNumber: number | null; quantity: number; minStock: number };
 
 const PAGE_WIDTH = 841.89;
 const PAGE_HEIGHT = 595.28;
 const MARGIN = 42;
 const ROW_HEIGHT = 25;
 const columns = [
-  { label: "Categoria", x: MARGIN, width: 185, align: "left" },
-  { label: "Item", x: MARGIN + 185, width: 300, align: "left" },
-  { label: "Saldo", x: MARGIN + 485, width: 75, align: "center" },
-  { label: "Mínimo", x: MARGIN + 560, width: 75, align: "center" },
-  { label: "Status", x: MARGIN + 635, width: 122, align: "left" },
+  { label: "Categoria", x: MARGIN, width: 155, align: "left" },
+  { label: "Item", x: MARGIN + 155, width: 260, align: "left" },
+  { label: "Armário", x: MARGIN + 415, width: 70, align: "center" },
+  { label: "Saldo", x: MARGIN + 485, width: 65, align: "center" },
+  { label: "Mínimo", x: MARGIN + 550, width: 65, align: "center" },
+  { label: "Status", x: MARGIN + 615, width: 142, align: "left" },
 ] as const;
 
 function fit(text: string, font: PDFFont, size: number, maxWidth: number) {
@@ -32,7 +33,7 @@ export async function buildInventoryPdf(items: PdfInventoryItem[], generatedAt =
   const pdf = await PDFDocument.create();
   const regular = await pdf.embedFont(StandardFonts.Helvetica);
   const bold = await pdf.embedFont(StandardFonts.HelveticaBold);
-  const sorted = [...items].sort((a, b) => `${a.category} ${a.name}`.localeCompare(`${b.category} ${b.name}`, "pt-BR"));
+  const sorted = [...items].sort((a, b) => (a.cabinetNumber ?? 99) - (b.cabinetNumber ?? 99) || `${a.category} ${a.name}`.localeCompare(`${b.category} ${b.name}`, "pt-BR"));
   const totalUnits = sorted.reduce((sum, item) => sum + item.quantity, 0);
   const lowStock = sorted.filter((item) => item.quantity <= item.minStock).length;
   let pageNumber = 0;
@@ -73,9 +74,10 @@ export async function buildInventoryPdf(items: PdfInventoryItem[], generatedAt =
       const status = item.quantity <= item.minStock ? "Estoque baixo" : "Disponível";
       drawTextCell(page, item.category, columns[0].x, y, columns[0].width, regular, 8.5);
       drawTextCell(page, item.name, columns[1].x, y, columns[1].width, bold, 8.5);
-      drawTextCell(page, String(item.quantity), columns[2].x, y, columns[2].width, bold, 8.5, "center");
-      drawTextCell(page, String(item.minStock), columns[3].x, y, columns[3].width, regular, 8.5, "center");
-      drawTextCell(page, status, columns[4].x, y, columns[4].width, regular, 8.5);
+      drawTextCell(page, item.cabinetNumber ? `Nº ${item.cabinetNumber}` : "—", columns[2].x, y, columns[2].width, regular, 8.5, "center");
+      drawTextCell(page, String(item.quantity), columns[3].x, y, columns[3].width, bold, 8.5, "center");
+      drawTextCell(page, String(item.minStock), columns[4].x, y, columns[4].width, regular, 8.5, "center");
+      drawTextCell(page, status, columns[5].x, y, columns[5].width, regular, 8.5);
       page.drawLine({ start: { x: MARGIN, y: y - 8 }, end: { x: PAGE_WIDTH - MARGIN, y: y - 8 }, color: rgb(0.89, 0.92, 0.94), thickness: 0.4 });
       y -= ROW_HEIGHT;
     });

@@ -25,6 +25,7 @@ Durante o desenvolvimento, os requisitos foram refinados conforme o uso e a aval
 - Entradas e saídas foram separadas em abas.
 - O histórico recebeu paginação.
 - Itens repetidos passaram a somar quantidades em vez de criar outra linha.
+- Os 18 armários físicos passaram a ter identificação no cadastro e uma tela própria de consulta.
 - A saída passou a exigir setor de destino e pessoa que recebeu.
 - Itens retirados do uso passaram para uma área de arquivados.
 - A exclusão definitiva foi limitada ao administrador e liberada após 21 dias, somente com saldo zerado e preservação do histórico.
@@ -90,9 +91,13 @@ Foram criadas cinco tabelas:
 
 Índices foram adicionados nos campos mais usados para autenticação, histórico, identidade de itens, datas e situações.
 
-A identidade normalizada de um item ativo possui índice exclusivo. Assim, mesmo com dois usuários trabalhando ao mesmo tempo, o banco impede duplicatas de nome e categoria. Entradas e saídas atualizam o saldo de forma atômica dentro de transações; uma saída concorrente também não consegue reduzir o estoque abaixo de zero.
+A identidade normalizada de um item ativo considera nome, categoria e armário e possui índice exclusivo. Assim, mesmo com dois usuários trabalhando ao mesmo tempo, o banco impede duplicatas dentro do mesmo armário. Entradas e saídas atualizam o saldo de forma atômica dentro de transações; uma saída concorrente também não consegue reduzir o estoque abaixo de zero.
 
-## 8. Regras de arquivamento e exclusão
+## 8. Organização dos armários
+
+O CEICIM utiliza armários físicos numerados de 1 a 18. O cadastro passou a exigir a localização do equipamento, e uma página específica agrupa os itens por armário, mostrando nome, categoria e quantidade. Itens iguais são consolidados quando nome, categoria e armário coincidem; o mesmo tipo de material pode aparecer separadamente quando está guardado em armários diferentes.
+
+## 9. Regras de arquivamento e exclusão
 
 O fluxo de retirada foi desenhado para evitar apagamentos acidentais:
 
@@ -102,7 +107,7 @@ O fluxo de retirada foi desenhado para evitar apagamentos acidentais:
 4. Antes da remoção, o sistema registra a ação, o usuário e o horário.
 5. As movimentações anteriores permanecem no histórico mesmo após a exclusão do cadastro.
 
-## 9. Relatório em PDF
+## 10. Relatório em PDF
 
 O estoque ativo pode ser baixado em PDF. O documento possui:
 
@@ -110,6 +115,7 @@ O estoque ativo pode ser baixado em PDF. O documento possui:
 - cabeçalho institucional;
 - data e hora de emissão;
 - categoria, item, saldo, mínimo e situação;
+- número do armário;
 - linhas alternadas para facilitar a leitura;
 - paginação automática;
 - resumo de itens, unidades e estoques baixos;
@@ -117,7 +123,7 @@ O estoque ativo pode ser baixado em PDF. O documento possui:
 
 O relatório foi testado com 38 itens distribuídos em três páginas e renderizado em imagem para inspeção visual.
 
-## 10. Validação técnica
+## 11. Validação técnica
 
 Foram executadas as seguintes verificações:
 
@@ -133,11 +139,11 @@ Foram executadas as seguintes verificações:
 
 O ambiente local de execução não conseguiu resolver diretamente o endereço externo do Neon por restrição de rede. A criação e a inspeção do banco foram realizadas pelo canal autorizado do provedor.
 
-## 11. Implantação
+## 12. Implantação
 
 O projeto foi publicado na Vercel e conectado ao banco PostgreSQL do Neon por variáveis secretas. O repositório não guarda a URL do banco nem o código de ativação.
 
-## 12. Cuidados para publicação
+## 13. Cuidados para publicação
 
 Antes de colocar o sistema em produção:
 
@@ -149,6 +155,6 @@ Antes de colocar o sistema em produção:
 6. Cadastrar cada operador com conta própria.
 7. Testar entrada, saída, agenda e PDF no domínio de produção.
 
-## 13. Resultado
+## 14. Resultado
 
 O projeto evoluiu de uma validação rápida de estoque e agenda para uma aplicação completa com autenticação individual, autorização por perfil, rastreabilidade, banco relacional e geração de documentos. A arquitetura final permite o uso por várias pessoas sem compartilhar uma única senha, preserva a integridade do saldo sob acessos simultâneos e reutiliza conexões com o banco para responder com menor latência.

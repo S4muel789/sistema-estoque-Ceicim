@@ -14,6 +14,7 @@ function invalid(message: string) { return Response.json({ error: message }, { s
 function errorMessage(error: unknown) {
   const message = error instanceof Error ? error.message : "Erro inesperado";
   if (message.includes("does not exist")) return "O banco do sistema ainda está sendo preparado. Tente novamente em instantes.";
+  if (message.includes("uq_inventory_active_identity")) return "Já existe um item ativo com o mesmo nome, categoria e armário.";
   return "Não foi possível concluir a operação. Tente novamente.";
 }
 
@@ -50,12 +51,13 @@ export async function POST(request: NextRequest) {
 
     if (payload.action === "create_item") {
       const name = clean(payload.name, 100); const category = clean(payload.category, 80);
-      const quantity = numberValue(payload.quantity); const minStock = numberValue(payload.minStock);
+      const quantity = numberValue(payload.quantity); const minStock = numberValue(payload.minStock); const cabinetNumber = numberValue(payload.cabinetNumber);
       if (!name || !category) return invalid("Informe o nome e a categoria do item.");
       if (quantity < 0) return invalid("A quantidade inicial não pode ser negativa.");
       if (minStock < 2) return invalid("O estoque mínimo deve ser de pelo menos 2 unidades.");
+      if (cabinetNumber < 1 || cabinetNumber > 18) return invalid("Selecione um armário entre 1 e 18.");
       const normalizedName = normalize(name); const normalizedCategory = normalize(category);
-      const [existing] = await db.select().from(inventoryItems).where(and(eq(inventoryItems.normalizedName, normalizedName), eq(inventoryItems.normalizedCategory, normalizedCategory), isNull(inventoryItems.archivedAt))).limit(1);
+      const [existing] = await db.select().from(inventoryItems).where(and(eq(inventoryItems.normalizedName, normalizedName), eq(inventoryItems.normalizedCategory, normalizedCategory), eq(inventoryItems.cabinetNumber, cabinetNumber), isNull(inventoryItems.archivedAt))).limit(1);
       if (existing) {
         await db.transaction(async (tx) => {
           await tx.update(inventoryItems).set({ quantity: sql`${inventoryItems.quantity} + ${quantity}`, minStock, updatedAt: now }).where(eq(inventoryItems.id, existing.id));
@@ -64,7 +66,7 @@ export async function POST(request: NextRequest) {
         return Response.json({ message: "Quantidade somada ao item já existente.", merged: true });
       }
       const [item] = await db.transaction(async (tx) => {
-        const [created] = await tx.insert(inventoryItems).values({ name, category, normalizedName, normalizedCategory, quantity, minStock, createdAt: now, updatedAt: now }).returning();
+        const [created] = await tx.insert(inventoryItems).values({ name, category, normalizedName, normalizedCategory, cabinetNumber, quantity, minStock, createdAt: now, updatedAt: now }).returning();
         await tx.insert(inventoryMovements).values({ itemId: created.id, itemName: created.name, action: "cadastro", quantity, notes: "Item cadastrado no estoque", actorName: user.name, createdAt: now });
         return [created];
       });
@@ -72,12 +74,15 @@ export async function POST(request: NextRequest) {
     }
 
     if (payload.action === "update_item") {
-      const id = numberValue(payload.id); const name = clean(payload.name, 100); const category = clean(payload.category, 80); const minStock = numberValue(payload.minStock);
-      if (!id || !name || !category || minStock < 2) return invalid("Revise os dados do item. O estoque mínimo deve ser de pelo menos 2 unidades.");
+      const id = numberValue(payload.id); const name = clean(payload.name, 100); const category = clean(payload.category, 80); const minStock = numberValue(payload.minStock); const cabinetNumber = numberValue(payload.cabinetNumber);
+      if (!id || !name || !category || minStock < 2 || cabinetNumber < 1 || cabinetNumber > 18) return invalid("Revise os dados do item, o armário e o estoque mínimo.");
       const [item] = await db.select().from(inventoryItems).where(eq(inventoryItems.id, id)).limit(1);
       if (!item) return invalid("Item não encontrado.");
+      const normalizedName = normalize(name); const normalizedCategory = normalize(category);
+      const [duplicate] = await db.select({ id: inventoryItems.id }).from(inventoryItems).where(and(eq(inventoryItems.normalizedName, normalizedName), eq(inventoryItems.normalizedCategory, normalizedCategory), eq(inventoryItems.cabinetNumber, cabinetNumber), isNull(inventoryItems.archivedAt))).limit(1);
+      if (duplicate && duplicate.id !== id) return invalid("Já existe um item ativo com o mesmo nome, categoria e armário.");
       await db.transaction(async (tx) => {
-        await tx.update(inventoryItems).set({ name, category, normalizedName: normalize(name), normalizedCategory: normalize(category), minStock, updatedAt: now }).where(eq(inventoryItems.id, id));
+        await tx.update(inventoryItems).set({ name, category, normalizedName, normalizedCategory, cabinetNumber, minStock, updatedAt: now }).where(eq(inventoryItems.id, id));
         await tx.insert(inventoryMovements).values({ itemId: id, itemName: name, action: "edicao", quantity: 0, notes: "Dados do item atualizados", actorName: user.name, createdAt: now });
       });
       return Response.json({ message: "Item atualizado com sucesso." });
@@ -116,8 +121,9 @@ export async function POST(request: NextRequest) {
       const archiving = payload.action === "archive_item";
       if (archiving && item.quantity !== 0) return invalid("Zere o saldo do item antes de arquivá-lo.");
       if (!archiving) {
-        const [activeDuplicate] = await db.select({ id: inventoryItems.id }).from(inventoryItems).where(and(eq(inventoryItems.normalizedName, item.normalizedName), eq(inventoryItems.normalizedCategory, item.normalizedCategory), isNull(inventoryItems.archivedAt))).limit(1);
-        if (activeDuplicate && activeDuplicate.id !== item.id) return invalid("Já existe um item ativo com o mesmo nome e categoria.");
+        const cabinetCondition = item.cabinetNumber == null ? isNull(inventoryItems.cabinetNumber) : eq(inventoryItems.cabinetNumber, item.cabinetNumber);
+        const [activeDuplicate] = await db.select({ id: inventoryItems.id }).from(inventoryItems).where(and(eq(inventoryItems.normalizedName, item.normalizedName), eq(inventoryItems.normalizedCategory, item.normalizedCategory), cabinetCondition, isNull(inventoryItems.archivedAt))).limit(1);
+        if (activeDuplicate && activeDuplicate.id !== item.id) return invalid("Já existe um item ativo com o mesmo nome, categoria e armário.");
       }
       await db.transaction(async (tx) => {
         await tx.update(inventoryItems).set({ archivedAt: archiving ? now : null, updatedAt: now }).where(eq(inventoryItems.id, id));

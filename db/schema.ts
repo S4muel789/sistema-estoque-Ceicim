@@ -27,6 +27,7 @@ export const inventoryItems = pgTable("inventory_items", {
   category: text("category").notNull(),
   normalizedName: text("normalized_name").notNull(),
   normalizedCategory: text("normalized_category").notNull(),
+  cabinetNumber: integer("cabinet_number"),
   quantity: integer("quantity").notNull().default(0),
   minStock: integer("min_stock").notNull().default(4),
   archivedAt: bigint("archived_at", { mode: "number" }),
@@ -35,8 +36,9 @@ export const inventoryItems = pgTable("inventory_items", {
 }, (table) => [
   index("idx_inventory_identity").on(table.normalizedName, table.normalizedCategory),
   uniqueIndex("uq_inventory_active_identity")
-    .on(table.normalizedName, table.normalizedCategory)
+    .on(table.normalizedName, table.normalizedCategory, table.cabinetNumber)
     .where(sql`${table.archivedAt} is null`),
+  index("idx_inventory_cabinet").on(table.cabinetNumber),
   index("idx_inventory_archived_at").on(table.archivedAt),
 ]);
 

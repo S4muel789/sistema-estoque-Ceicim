@@ -28,6 +28,7 @@ import {
   TriangleAlert,
   UserCog,
   Users,
+  Warehouse,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -85,12 +86,13 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { Toaster } from "@/components/ui/sonner";
 
-type View = "inicio" | "estoque" | "movimentar" | "historico" | "agenda" | "arquivados";
+type View = "inicio" | "estoque" | "armarios" | "movimentar" | "historico" | "agenda" | "arquivados";
 
 type Item = {
   id: number;
   name: string;
   category: string;
+  cabinetNumber: number | null;
   quantity: number;
   minStock: number;
   archivedAt: number | null;
@@ -135,10 +137,12 @@ const monthNames = [
   "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro",
 ];
 const weekNames = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
+const cabinetNumbers = Array.from({ length: 18 }, (_, index) => index + 1);
 
 const navItems: { value: View; label: string; icon: typeof LayoutDashboard }[] = [
   { value: "inicio", label: "Visão geral", icon: LayoutDashboard },
   { value: "estoque", label: "Estoque", icon: Boxes },
+  { value: "armarios", label: "Armários", icon: Warehouse },
   { value: "movimentar", label: "Entradas e saídas", icon: ArrowDownToLine },
   { value: "historico", label: "Movimentações", icon: History },
   { value: "agenda", label: "Agenda de visitas", icon: CalendarDays },
@@ -340,6 +344,11 @@ export default function Dashboard({ user }: { user: CurrentUser }) {
   const activeItems = useMemo(() => data.items.filter((item) => !item.archivedAt), [data.items]);
   const archivedItems = useMemo(() => data.items.filter((item) => item.archivedAt), [data.items]);
   const lowStockItems = useMemo(() => activeItems.filter((item) => item.quantity <= item.minStock), [activeItems]);
+  const unassignedItems = useMemo(() => activeItems.filter((item) => item.cabinetNumber == null), [activeItems]);
+  const cabinetItems = useMemo(() => cabinetNumbers.map((number) => ({
+    number,
+    items: activeItems.filter((item) => item.cabinetNumber === number),
+  })), [activeItems]);
   const visitsByDate = useMemo(() => {
     const grouped = new Map<string, Visit[]>();
     for (const visit of data.visits) {
@@ -408,8 +417,8 @@ export default function Dashboard({ user }: { user: CurrentUser }) {
     const form = new FormData(event.currentTarget);
     void runAction(
       editingItem
-        ? { action: "update_item", id: editingItem.id, name: form.get("name"), category: form.get("category"), minStock: form.get("minStock") }
-        : { action: "create_item", name: form.get("name"), category: form.get("category"), quantity: form.get("quantity"), minStock: form.get("minStock") },
+        ? { action: "update_item", id: editingItem.id, name: form.get("name"), category: form.get("category"), cabinetNumber: form.get("cabinetNumber"), minStock: form.get("minStock") }
+        : { action: "create_item", name: form.get("name"), category: form.get("category"), cabinetNumber: form.get("cabinetNumber"), quantity: form.get("quantity"), minStock: form.get("minStock") },
       () => { setItemDialog(false); setEditingItem(null); }
     );
   }
@@ -564,23 +573,38 @@ export default function Dashboard({ user }: { user: CurrentUser }) {
           {view === "estoque" && (
             <section className="view-stack">
               <div className="section-actions">
-                <div><p className="eyebrow">Controle de materiais</p><h2>Estoque ativo</h2><p>Os itens repetidos são somados automaticamente quando nome e categoria coincidem.</p></div>
+                <div><p className="eyebrow">Controle de materiais</p><h2>Estoque ativo</h2><p>Itens com o mesmo nome, categoria e armário são somados automaticamente.</p></div>
                 <Button onClick={() => { setEditingItem(null); setItemDialog(true); }}><PackagePlus />Cadastrar item</Button>
               </div>
               <article className="panel table-panel">
                 <div className="table-tools"><label className="search-box"><Search /><Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar por nome ou categoria" /></label><Badge variant="secondary">{filteredItems.length} itens</Badge></div>
                 {loading ? <div className="loading-line"><RefreshCw className="spin" />Carregando estoque...</div> : filteredItems.length ? (
                   <Table>
-                    <TableHeader><TableRow><TableHead>Categoria</TableHead><TableHead>Item</TableHead><TableHead className="text-center">Saldo</TableHead><TableHead className="text-center">Mínimo</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Ações</TableHead></TableRow></TableHeader>
+                    <TableHeader><TableRow><TableHead>Categoria</TableHead><TableHead>Item</TableHead><TableHead className="text-center">Armário</TableHead><TableHead className="text-center">Saldo</TableHead><TableHead className="text-center">Mínimo</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Ações</TableHead></TableRow></TableHeader>
                     <TableBody>
                       {filteredItems.map((item) => {
                         const low = item.quantity <= item.minStock;
-                        return <TableRow key={item.id}><TableCell><span className="category-pill">{item.category}</span></TableCell><TableCell className="font-semibold">{item.name}</TableCell><TableCell className="text-center text-base font-bold">{item.quantity}</TableCell><TableCell className="text-center">{item.minStock}</TableCell><TableCell><Badge className={low ? "badge-low" : "badge-ok"}>{low ? "Estoque baixo" : "Disponível"}</Badge></TableCell><TableCell><div className="row-actions">{isAdmin ? <><Button variant="ghost" size="icon-sm" aria-label={`Editar ${item.name}`} onClick={() => { setEditingItem(item); setItemDialog(true); }}><Pencil /></Button><Button variant="ghost" size="icon-sm" disabled={item.quantity !== 0} title={item.quantity === 0 ? "Arquivar item" : "Zere o saldo antes de arquivar"} aria-label={`Arquivar ${item.name}`} onClick={() => setArchiveTarget(item)}><Archive /></Button></> : <span className="operator-note">Somente consulta</span>}</div></TableCell></TableRow>;
+                        return <TableRow key={item.id}><TableCell><span className="category-pill">{item.category}</span></TableCell><TableCell className="font-semibold">{item.name}</TableCell><TableCell className="text-center"><span className="cabinet-pill">{item.cabinetNumber ? `Nº ${item.cabinetNumber}` : "Não definido"}</span></TableCell><TableCell className="text-center text-base font-bold">{item.quantity}</TableCell><TableCell className="text-center">{item.minStock}</TableCell><TableCell><Badge className={low ? "badge-low" : "badge-ok"}>{low ? "Estoque baixo" : "Disponível"}</Badge></TableCell><TableCell><div className="row-actions">{isAdmin ? <><Button variant="ghost" size="icon-sm" aria-label={`Editar ${item.name}`} onClick={() => { setEditingItem(item); setItemDialog(true); }}><Pencil /></Button><Button variant="ghost" size="icon-sm" disabled={item.quantity !== 0} title={item.quantity === 0 ? "Arquivar item" : "Zere o saldo antes de arquivar"} aria-label={`Arquivar ${item.name}`} onClick={() => setArchiveTarget(item)}><Archive /></Button></> : <span className="operator-note">Somente consulta</span>}</div></TableCell></TableRow>;
                       })}
                     </TableBody>
                   </Table>
                 ) : <EmptyState icon={Boxes} title={query ? "Nenhum item encontrado" : "Estoque ainda vazio"} text={query ? "Tente buscar por outro nome ou categoria." : "Cadastre o primeiro equipamento ou material do CEICIM."} />}
               </article>
+            </section>
+          )}
+
+          {view === "armarios" && (
+            <section className="view-stack">
+              <div className="section-actions"><div><p className="eyebrow">Organização física</p><h2>Armários 1 a 18</h2><p>Consulte rapidamente os equipamentos e as quantidades guardadas em cada armário.</p></div></div>
+              {unassignedItems.length > 0 && <div className="unassigned-banner"><TriangleAlert /><div><strong>{unassignedItems.length} {unassignedItems.length === 1 ? "item precisa" : "itens precisam"} de armário</strong><span>{unassignedItems.map((item) => item.name).join(", ")}. Um administrador pode editar {unassignedItems.length === 1 ? "o cadastro" : "os cadastros"} e informar a localização.</span></div></div>}
+              <div className="cabinet-grid">
+                {cabinetItems.map(({ number, items }) => (
+                  <article className="cabinet-card" key={number}>
+                    <div className="cabinet-heading"><span><Warehouse /></span><div><small>ARMÁRIO</small><strong>{String(number).padStart(2, "0")}</strong></div><Badge variant="secondary">{items.length} {items.length === 1 ? "item" : "itens"}</Badge></div>
+                    {items.length ? <div className="cabinet-list">{items.map((item) => <div key={item.id}><span><strong>{item.name}</strong><small>{item.category}</small></span><b>{item.quantity}</b></div>)}</div> : <p className="cabinet-empty">Nenhum item cadastrado neste armário.</p>}
+                  </article>
+                ))}
+              </div>
             </section>
           )}
 
@@ -636,9 +660,9 @@ export default function Dashboard({ user }: { user: CurrentUser }) {
             <section className="view-stack">
               <div className="section-actions"><div><p className="eyebrow">Administração</p><h2>Itens arquivados</h2><p>Somente administradores podem excluir. O item precisa ter saldo zerado e permanecer arquivado por 21 dias; o histórico é preservado.</p></div></div>
               <article className="panel table-panel">
-                {archivedItems.length ? <Table><TableHeader><TableRow><TableHead>Item</TableHead><TableHead>Categoria</TableHead><TableHead className="text-center">Saldo</TableHead><TableHead>Arquivado em</TableHead><TableHead className="text-right">Ações</TableHead></TableRow></TableHeader><TableBody>{archivedItems.map((item) => {
+                {archivedItems.length ? <Table><TableHeader><TableRow><TableHead>Item</TableHead><TableHead>Categoria</TableHead><TableHead className="text-center">Armário</TableHead><TableHead className="text-center">Saldo</TableHead><TableHead>Arquivado em</TableHead><TableHead className="text-right">Ações</TableHead></TableRow></TableHeader><TableBody>{archivedItems.map((item) => {
                   const canDelete = item.quantity === 0 && renderTime - (item.archivedAt ?? renderTime) >= 21 * 24 * 60 * 60 * 1000;
-                  return <TableRow key={item.id}><TableCell className="font-semibold">{item.name}</TableCell><TableCell>{item.category}</TableCell><TableCell className="text-center">{item.quantity}</TableCell><TableCell>{item.archivedAt ? formatDateTime(item.archivedAt) : "—"}</TableCell><TableCell><div className="row-actions">{isAdmin ? <><Button variant="outline" size="sm" onClick={() => void runAction({ action: "unarchive_item", id: item.id })}><RotateCcw />Restaurar</Button><Button variant="ghost" size="icon-sm" disabled={!canDelete} title={item.quantity !== 0 ? "A exclusão exige saldo zerado" : canDelete ? "Excluir definitivamente" : "Disponível após 21 dias"} onClick={() => setDeleteTarget(item)}><Trash2 /></Button></> : <span className="operator-note">Somente consulta</span>}</div></TableCell></TableRow>;
+                  return <TableRow key={item.id}><TableCell className="font-semibold">{item.name}</TableCell><TableCell>{item.category}</TableCell><TableCell className="text-center">{item.cabinetNumber ? `Nº ${item.cabinetNumber}` : "—"}</TableCell><TableCell className="text-center">{item.quantity}</TableCell><TableCell>{item.archivedAt ? formatDateTime(item.archivedAt) : "—"}</TableCell><TableCell><div className="row-actions">{isAdmin ? <><Button variant="outline" size="sm" onClick={() => void runAction({ action: "unarchive_item", id: item.id })}><RotateCcw />Restaurar</Button><Button variant="ghost" size="icon-sm" disabled={!canDelete} title={item.quantity !== 0 ? "A exclusão exige saldo zerado" : canDelete ? "Excluir definitivamente" : "Disponível após 21 dias"} onClick={() => setDeleteTarget(item)}><Trash2 /></Button></> : <span className="operator-note">Somente consulta</span>}</div></TableCell></TableRow>;
                 })}</TableBody></Table> : <EmptyState icon={Archive} title="Nenhum item arquivado" text="Os itens retirados do estoque ativo aparecerão aqui." />}
               </article>
             </section>
@@ -650,10 +674,11 @@ export default function Dashboard({ user }: { user: CurrentUser }) {
 
       <Dialog open={itemDialog} onOpenChange={(open) => { setItemDialog(open); if (!open) setEditingItem(null); }}>
         <DialogContent className="form-dialog">
-          <DialogHeader><DialogTitle>{editingItem ? "Editar item" : "Cadastrar novo item"}</DialogTitle><DialogDescription>{editingItem ? "Corrija o nome, a categoria ou o nível mínimo." : "Se o item já existir na mesma categoria, a quantidade será somada."}</DialogDescription></DialogHeader>
+          <DialogHeader><DialogTitle>{editingItem ? "Editar item" : "Cadastrar novo item"}</DialogTitle><DialogDescription>{editingItem ? "Corrija os dados e informe em qual armário o item está." : "Se o item já existir na mesma categoria e armário, a quantidade será somada."}</DialogDescription></DialogHeader>
           <form key={editingItem?.id ?? "new"} onSubmit={submitItem} className="form-grid">
             <label className="field full"><span>Nome do item</span><Input name="name" defaultValue={editingItem?.name} placeholder="Ex.: Cabo HDMI" required autoFocus /></label>
             <label className="field full"><span>Categoria</span><Input name="category" defaultValue={editingItem?.category} placeholder="Ex.: Cabos e adaptadores" required /></label>
+            <label className="field"><span>Armário</span><select name="cabinetNumber" className="native-select" defaultValue={String(editingItem?.cabinetNumber ?? 1)} required>{cabinetNumbers.map((number) => <option key={number} value={number}>Armário {number}</option>)}</select></label>
             {!editingItem && <label className="field"><span>Quantidade inicial</span><Input name="quantity" type="number" min="0" defaultValue="1" required /></label>}
             <label className="field"><span>Estoque mínimo</span><Input name="minStock" type="number" min="2" defaultValue={editingItem?.minStock ?? 4} required /></label>
             <DialogFooter className="full"><Button type="button" variant="outline" onClick={() => setItemDialog(false)}>Cancelar</Button><Button type="submit" disabled={busy}>{busy ? "Salvando..." : editingItem ? "Salvar alterações" : "Cadastrar item"}</Button></DialogFooter>
