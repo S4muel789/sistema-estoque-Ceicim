@@ -1,7 +1,7 @@
 import { and, asc, desc, eq, gte, isNull, sql } from "drizzle-orm";
 import { NextRequest } from "next/server";
 import { getDb } from "@/db";
-import { inventoryItems, inventoryMovements, visits } from "@/db/schema";
+import { inventoryItems, inventoryMovements, storageCabinets, visits } from "@/db/schema";
 import { forbidden, getRequestUser, isTrustedMutationRequest, unauthorized, untrustedRequest } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
@@ -23,13 +23,14 @@ export async function GET(request: NextRequest) {
   if (!user) return unauthorized();
   try {
     const db = getDb();
-    const [items, movements, scheduledVisits] = await Promise.all([
+    const [items, movements, scheduledVisits, cabinets] = await Promise.all([
       db.select().from(inventoryItems).orderBy(asc(inventoryItems.category), asc(inventoryItems.name)),
       db.select().from(inventoryMovements).orderBy(desc(inventoryMovements.createdAt)).limit(300),
       db.select().from(visits).orderBy(asc(visits.visitDate), asc(visits.startTime)),
+      db.select().from(storageCabinets).orderBy(asc(storageCabinets.number)),
     ]);
     return Response.json(
-      { items, movements, visits: scheduledVisits },
+      { items, movements, visits: scheduledVisits, cabinets },
       { headers: { "Cache-Control": "private, no-store" } },
     );
   } catch (error) {
@@ -46,8 +47,17 @@ export async function POST(request: NextRequest) {
     const payload = await request.json() as Payload;
     const db = getDb();
     const now = Date.now();
-    const adminOnly = ["update_item", "archive_item", "unarchive_item", "delete_archived_item"];
+    const adminOnly = ["create_cabinet", "update_item", "archive_item", "unarchive_item", "delete_archived_item"];
     if (payload.action && adminOnly.includes(payload.action) && user.role !== "administrador") return forbidden();
+
+    if (payload.action === "create_cabinet") {
+      const cabinetNumber = numberValue(payload.cabinetNumber);
+      if (!Number.isInteger(cabinetNumber) || cabinetNumber < 1 || cabinetNumber > 999) return invalid("Informe um número de armário entre 1 e 999.");
+      const [existingCabinet] = await db.select({ number: storageCabinets.number }).from(storageCabinets).where(eq(storageCabinets.number, cabinetNumber)).limit(1);
+      if (existingCabinet) return invalid(`O armário ${cabinetNumber} já está cadastrado.`);
+      await db.insert(storageCabinets).values({ number: cabinetNumber, createdAt: now });
+      return Response.json({ message: `Armário ${cabinetNumber} cadastrado com sucesso.` }, { status: 201 });
+    }
 
     if (payload.action === "create_item") {
       const name = clean(payload.name, 100); const category = clean(payload.category, 80);
@@ -55,7 +65,8 @@ export async function POST(request: NextRequest) {
       if (!name || !category) return invalid("Informe o nome e a categoria do item.");
       if (quantity < 0) return invalid("A quantidade inicial não pode ser negativa.");
       if (minStock < 2) return invalid("O estoque mínimo deve ser de pelo menos 2 unidades.");
-      if (cabinetNumber < 1 || cabinetNumber > 18) return invalid("Selecione um armário entre 1 e 18.");
+      const [cabinet] = await db.select({ number: storageCabinets.number }).from(storageCabinets).where(eq(storageCabinets.number, cabinetNumber)).limit(1);
+      if (!cabinet) return invalid("Selecione um armário cadastrado.");
       const normalizedName = normalize(name); const normalizedCategory = normalize(category);
       const [existing] = await db.select().from(inventoryItems).where(and(eq(inventoryItems.normalizedName, normalizedName), eq(inventoryItems.normalizedCategory, normalizedCategory), eq(inventoryItems.cabinetNumber, cabinetNumber), isNull(inventoryItems.archivedAt))).limit(1);
       if (existing) {
@@ -75,7 +86,9 @@ export async function POST(request: NextRequest) {
 
     if (payload.action === "update_item") {
       const id = numberValue(payload.id); const name = clean(payload.name, 100); const category = clean(payload.category, 80); const minStock = numberValue(payload.minStock); const cabinetNumber = numberValue(payload.cabinetNumber);
-      if (!id || !name || !category || minStock < 2 || cabinetNumber < 1 || cabinetNumber > 18) return invalid("Revise os dados do item, o armário e o estoque mínimo.");
+      if (!id || !name || !category || minStock < 2) return invalid("Revise os dados do item, o armário e o estoque mínimo.");
+      const [cabinet] = await db.select({ number: storageCabinets.number }).from(storageCabinets).where(eq(storageCabinets.number, cabinetNumber)).limit(1);
+      if (!cabinet) return invalid("Selecione um armário cadastrado.");
       const [item] = await db.select().from(inventoryItems).where(eq(inventoryItems.id, id)).limit(1);
       if (!item) return invalid("Item não encontrado.");
       const normalizedName = normalize(name); const normalizedCategory = normalize(category);

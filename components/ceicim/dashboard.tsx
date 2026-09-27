@@ -129,16 +129,15 @@ type Visit = {
   updatedAt: number;
 };
 
-type DataSet = { items: Item[]; movements: Movement[]; visits: Visit[] };
+type Cabinet = { number: number; createdAt: number };
+type DataSet = { items: Item[]; movements: Movement[]; visits: Visit[]; cabinets: Cabinet[] };
 
-const emptyData: DataSet = { items: [], movements: [], visits: [] };
+const emptyData: DataSet = { items: [], movements: [], visits: [], cabinets: [] };
 const monthNames = [
   "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
   "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro",
 ];
 const weekNames = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
-const cabinetNumbers = Array.from({ length: 18 }, (_, index) => index + 1);
-
 const navItems: { value: View; label: string; icon: typeof LayoutDashboard }[] = [
   { value: "inicio", label: "Visão geral", icon: LayoutDashboard },
   { value: "estoque", label: "Estoque", icon: Boxes },
@@ -242,6 +241,7 @@ export default function Dashboard({ user }: { user: CurrentUser }) {
   const [editingItem, setEditingItem] = useState<Item | null>(null);
   const [archiveTarget, setArchiveTarget] = useState<Item | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Item | null>(null);
+  const [cabinetDialog, setCabinetDialog] = useState(false);
   const [visitDialog, setVisitDialog] = useState(false);
   const [editingVisit, setEditingVisit] = useState<Visit | null>(null);
   const [visitStatus, setVisitStatus] = useState<Visit["status"]>("agendada");
@@ -258,7 +258,7 @@ export default function Dashboard({ user }: { user: CurrentUser }) {
       const result = (await response.json()) as DataSet & { error?: string };
       if (response.status === 401) { window.location.assign("/"); return; }
       if (!response.ok) throw new Error(result.error || "Não foi possível carregar os dados.");
-      setData({ items: result.items ?? [], movements: result.movements ?? [], visits: result.visits ?? [] });
+      setData({ items: result.items ?? [], movements: result.movements ?? [], visits: result.visits ?? [], cabinets: result.cabinets ?? [] });
       if (showSuccess) toast.success("Dados atualizados.");
     } catch (error) {
       setLoadError(error instanceof Error ? error.message : "Não foi possível carregar os dados.");
@@ -345,10 +345,11 @@ export default function Dashboard({ user }: { user: CurrentUser }) {
   const archivedItems = useMemo(() => data.items.filter((item) => item.archivedAt), [data.items]);
   const lowStockItems = useMemo(() => activeItems.filter((item) => item.quantity <= item.minStock), [activeItems]);
   const unassignedItems = useMemo(() => activeItems.filter((item) => item.cabinetNumber == null), [activeItems]);
+  const cabinetNumbers = useMemo(() => data.cabinets.map((cabinet) => cabinet.number), [data.cabinets]);
   const cabinetItems = useMemo(() => cabinetNumbers.map((number) => ({
     number,
     items: activeItems.filter((item) => item.cabinetNumber === number),
-  })), [activeItems]);
+  })), [activeItems, cabinetNumbers]);
   const visitsByDate = useMemo(() => {
     const grouped = new Map<string, Visit[]>();
     for (const visit of data.visits) {
@@ -421,6 +422,12 @@ export default function Dashboard({ user }: { user: CurrentUser }) {
         : { action: "create_item", name: form.get("name"), category: form.get("category"), cabinetNumber: form.get("cabinetNumber"), quantity: form.get("quantity"), minStock: form.get("minStock") },
       () => { setItemDialog(false); setEditingItem(null); }
     );
+  }
+
+  function submitCabinet(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    void runAction({ action: "create_cabinet", cabinetNumber: form.get("cabinetNumber") }, () => setCabinetDialog(false));
   }
 
   function submitMovement(event: FormEvent<HTMLFormElement>, type: "entrada" | "saida") {
@@ -595,7 +602,7 @@ export default function Dashboard({ user }: { user: CurrentUser }) {
 
           {view === "armarios" && (
             <section className="view-stack">
-              <div className="section-actions"><div><p className="eyebrow">Organização física</p><h2>Armários 1 a 18</h2><p>Consulte rapidamente os equipamentos e as quantidades guardadas em cada armário.</p></div></div>
+              <div className="section-actions"><div><p className="eyebrow">Organização física</p><h2>Armários cadastrados</h2><p>Consulte os equipamentos de cada armário e adicione novos espaços quando necessário.</p></div>{isAdmin && <Button onClick={() => setCabinetDialog(true)}><PackagePlus />Novo armário</Button>}</div>
               {unassignedItems.length > 0 && <div className="unassigned-banner"><TriangleAlert /><div><strong>{unassignedItems.length} {unassignedItems.length === 1 ? "item precisa" : "itens precisam"} de armário</strong><span>{unassignedItems.map((item) => item.name).join(", ")}. Um administrador pode editar {unassignedItems.length === 1 ? "o cadastro" : "os cadastros"} e informar a localização.</span></div></div>}
               <div className="cabinet-grid">
                 {cabinetItems.map(({ number, items }) => (
@@ -682,6 +689,16 @@ export default function Dashboard({ user }: { user: CurrentUser }) {
             {!editingItem && <label className="field"><span>Quantidade inicial</span><Input name="quantity" type="number" min="0" defaultValue="1" required /></label>}
             <label className="field"><span>Estoque mínimo</span><Input name="minStock" type="number" min="2" defaultValue={editingItem?.minStock ?? 4} required /></label>
             <DialogFooter className="full"><Button type="button" variant="outline" onClick={() => setItemDialog(false)}>Cancelar</Button><Button type="submit" disabled={busy}>{busy ? "Salvando..." : editingItem ? "Salvar alterações" : "Cadastrar item"}</Button></DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={cabinetDialog} onOpenChange={setCabinetDialog}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Adicionar novo armário</DialogTitle><DialogDescription>Informe o número que identifica o armário. Não é permitido repetir um número já cadastrado.</DialogDescription></DialogHeader>
+          <form onSubmit={submitCabinet} className="form-grid">
+            <label className="field full"><span>Número do armário</span><Input name="cabinetNumber" type="number" min="1" max="999" placeholder="Ex.: 19" required autoFocus /></label>
+            <DialogFooter className="full"><Button type="button" variant="outline" onClick={() => setCabinetDialog(false)}>Cancelar</Button><Button type="submit" disabled={busy}>{busy ? "Salvando..." : "Adicionar armário"}</Button></DialogFooter>
           </form>
         </DialogContent>
       </Dialog>

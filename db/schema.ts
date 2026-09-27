@@ -21,6 +21,11 @@ export const sessions = pgTable("sessions", {
   createdAt: bigint("created_at", { mode: "number" }).notNull(),
 }, (table) => [index("idx_sessions_user_id").on(table.userId), index("idx_sessions_expires_at").on(table.expiresAt)]);
 
+export const storageCabinets = pgTable("storage_cabinets", {
+  number: integer("number").primaryKey(),
+  createdAt: bigint("created_at", { mode: "number" }).notNull(),
+});
+
 export const inventoryItems = pgTable("inventory_items", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
