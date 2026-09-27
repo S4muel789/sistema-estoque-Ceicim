@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 
 export default function LoginForm() {
   const [needsSetup, setNeedsSetup] = useState(false);
+  const [recovering, setRecovering] = useState(false);
   const [checking, setChecking] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -28,7 +29,8 @@ export default function LoginForm() {
     setError("");
     const payload = Object.fromEntries(new FormData(event.currentTarget).entries());
     try {
-      const response = await fetch(needsSetup ? "/api/auth/setup" : "/api/auth/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+      const endpoint = needsSetup ? "/api/auth/setup" : recovering ? "/api/auth/recover" : "/api/auth/login";
+      const response = await fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "Não foi possível entrar.");
       window.location.assign("/dashboard");
@@ -49,16 +51,18 @@ export default function LoginForm() {
       <section className="login-panel">
         <div className="login-card">
           <span className="login-icon"><KeyRound /></span>
-          <p className="eyebrow">{needsSetup ? "Configuração inicial" : "Bem-vindo"}</p>
-          <h2>{needsSetup ? "Criar administrador" : "Entrar no sistema"}</h2>
-          <p>{needsSetup ? "Crie a primeira conta administrativa usando o código de ativação." : "Use seu usuário e sua senha próprios."}</p>
+          <p className="eyebrow">{needsSetup ? "Configuração inicial" : recovering ? "Recuperação segura" : "Bem-vindo"}</p>
+          <h2>{needsSetup ? "Criar administrador" : recovering ? "Recuperar acesso" : "Entrar no sistema"}</h2>
+          <p>{needsSetup ? "Crie a primeira conta administrativa usando o código de ativação." : recovering ? "Confirme o usuário e o código administrativo para definir uma nova senha." : "Use seu usuário e sua senha próprios."}</p>
           {checking ? <div className="login-loading"><LoaderCircle className="spin" /> Verificando sistema...</div> : (
             <form onSubmit={submit} className="login-form">
               {needsSetup && <><label className="field"><span>Nome completo</span><Input name="name" autoComplete="name" required /></label><label className="field"><span>Código de ativação</span><Input name="setupKey" type="password" required /></label></>}
               <label className="field"><span>Usuário</span><Input name="username" autoComplete="username" placeholder="ex.: samuel" required autoFocus={!needsSetup} /></label>
-              <label className="field"><span>Senha</span><Input name="password" type="password" minLength={needsSetup ? 10 : undefined} maxLength={128} autoComplete={needsSetup ? "new-password" : "current-password"} required /></label>
+              {recovering && <label className="field"><span>Código administrativo de recuperação</span><Input name="recoveryKey" type="password" autoComplete="one-time-code" required /></label>}
+              <label className="field"><span>{recovering ? "Nova senha" : "Senha"}</span><Input name={recovering ? "newPassword" : "password"} type="password" minLength={needsSetup || recovering ? 10 : undefined} maxLength={128} autoComplete={needsSetup || recovering ? "new-password" : "current-password"} required /></label>
               {error && <div className="login-error">{error}</div>}
-              <Button type="submit" size="lg" disabled={busy}>{busy ? <><LoaderCircle className="spin" /> Aguarde...</> : needsSetup ? "Criar conta e entrar" : "Entrar"}</Button>
+              <Button type="submit" size="lg" disabled={busy}>{busy ? <><LoaderCircle className="spin" /> Aguarde...</> : needsSetup ? "Criar conta e entrar" : recovering ? "Redefinir senha e entrar" : "Entrar"}</Button>
+              {!needsSetup && <button type="button" className="login-recovery-link" onClick={() => { setRecovering((value) => !value); setError(""); }}>{recovering ? "Voltar ao login" : "Esqueci minha senha"}</button>}
             </form>
           )}
         </div>

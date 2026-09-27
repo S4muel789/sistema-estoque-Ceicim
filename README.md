@@ -124,6 +124,8 @@ pnpm dev
 
 Acesse `http://localhost:3000`. Quando o banco ainda não possuir usuários, o sistema apresentará a configuração do primeiro administrador e solicitará o `SETUP_KEY`.
 
+Se um usuário esquecer a senha, use **Esqueci minha senha** na tela de entrada. A recuperação exige o nome de usuário, o `SETUP_KEY` administrativo e uma nova senha com pelo menos 10 caracteres. Após a redefinição, todas as sessões anteriores da conta são encerradas.
+
 ## Validações realizadas
 
 - `pnpm lint`: nenhum erro.

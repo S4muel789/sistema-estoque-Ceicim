@@ -110,6 +110,8 @@ button { cursor: pointer; }
 .login-card > p:not(.eyebrow) { margin: 0; color: #718196; line-height: 1.55; }
 .login-form { display: grid; gap: 1rem; margin-top: 1.5rem; }
 .login-form button { margin-top: .25rem; }
+.login-form .login-recovery-link { margin: 0; padding: .35rem; border: 0; color: #0b6170; background: transparent; font-size: .85rem; font-weight: 600; text-decoration: underline; text-underline-offset: 3px; }
+.login-form .login-recovery-link:hover { color: #084a56; }
 .login-error { padding: .7rem .8rem; border: 1px solid #efc5cb; border-radius: 10px; color: #973542; background: #fff0f2; font-size: .82rem; }
 .login-loading { display: flex; align-items: center; gap: .6rem; min-height: 120px; color: #718196; }
 .login-panel > footer { margin-top: 1.5rem; color: #8695a6; font-size: .75rem; }
