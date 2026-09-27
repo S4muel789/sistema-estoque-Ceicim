@@ -29,11 +29,16 @@ export async function POST(request: NextRequest) {
     if (!name) return Response.json({ error: "Informe o nome." }, { status: 400 });
     if (!validUsername(username)) return Response.json({ error: "Usuário inválido. Use letras minúsculas, números, ponto, hífen ou sublinhado." }, { status: 400 });
     if (!validPassword(password)) return Response.json({ error: `A senha deve ter entre ${PASSWORD_MIN_LENGTH} e ${PASSWORD_MAX_LENGTH} caracteres.` }, { status: 400 });
+    const [existingUser] = await db.select({ id: users.id }).from(users).where(eq(users.username, username)).limit(1);
+    if (existingUser) return Response.json({ error: `O usuário “${username}” já existe. Escolha outro nome de usuário.` }, { status: 409 });
     try {
       await db.insert(users).values({ name, username, passwordHash: await hashPassword(password), role, createdAt: now, updatedAt: now });
       return Response.json({ message: "Usuário criado com sucesso." }, { status: 201 });
     } catch (error) {
-      if (error instanceof Error && error.message.includes("unique")) return Response.json({ error: "Este nome de usuário já está em uso." }, { status: 409 });
+      const databaseError = error as Error & { cause?: { code?: string } };
+      if (databaseError.cause?.code === "23505" || databaseError.message.includes("unique")) {
+        return Response.json({ error: "Este nome de usuário já está em uso." }, { status: 409 });
+      }
       throw error;
     }
   }

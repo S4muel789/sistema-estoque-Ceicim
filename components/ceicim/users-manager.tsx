@@ -43,20 +43,25 @@ export default function UsersManager({ currentUserId }: { currentUserId: number 
       if (!response.ok) throw new Error(result.error || "Não foi possível concluir a ação.");
       toast.success(result.message);
       await load();
-    } catch (error) { toast.error(error instanceof Error ? error.message : "Falha na operação."); }
-    finally { setBusy(false); }
+      return true;
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Falha na operação.");
+      return false;
+    } finally { setBusy(false); }
   }
 
-  function create(event: FormEvent<HTMLFormElement>) {
+  async function create(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
-    void action({ action: "create", name: form.get("name"), username: form.get("username"), password: form.get("password"), role }).then(() => { setCreateOpen(false); setRole("operador"); });
+    const created = await action({ action: "create", name: form.get("name"), username: form.get("username"), password: form.get("password"), role });
+    if (created) { setCreateOpen(false); setRole("operador"); }
   }
 
-  function reset(event: FormEvent<HTMLFormElement>) {
+  async function reset(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const password = new FormData(event.currentTarget).get("password");
-    void action({ action: "reset_password", id: resetTarget?.id, password }).then(() => setResetTarget(null));
+    const changed = await action({ action: "reset_password", id: resetTarget?.id, password });
+    if (changed) setResetTarget(null);
   }
 
   return (
@@ -70,7 +75,7 @@ export default function UsersManager({ currentUserId }: { currentUserId: number 
         )}
       </section>
 
-      <Dialog open={createOpen} onOpenChange={setCreateOpen}><DialogContent><DialogHeader><DialogTitle>Criar novo usuário</DialogTitle><DialogDescription>A pessoa entrará com o usuário e a senha definidos aqui. Use pelo menos 10 caracteres.</DialogDescription></DialogHeader><form className="form-grid" onSubmit={create}><label className="field full"><span>Nome completo</span><Input name="name" required /></label><label className="field full"><span>Usuário</span><Input name="username" placeholder="letras minúsculas e números" required /></label><label className="field"><span>Senha inicial</span><Input name="password" type="password" minLength={10} maxLength={128} required /></label><label className="field"><span>Perfil</span><Select value={role} onValueChange={setRole}><SelectTrigger className="w-full"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="operador">Operador</SelectItem><SelectItem value="administrador">Administrador</SelectItem></SelectContent></Select></label><DialogFooter className="full"><Button type="button" variant="outline" onClick={() => setCreateOpen(false)}>Cancelar</Button><Button disabled={busy}>{busy ? "Criando..." : "Criar usuário"}</Button></DialogFooter></form></DialogContent></Dialog>
+      <Dialog open={createOpen} onOpenChange={setCreateOpen}><DialogContent><DialogHeader><DialogTitle>Criar novo usuário</DialogTitle><DialogDescription>A pessoa entrará com o usuário e a senha definidos aqui. O nome de usuário deve ser único e a senha deve ter pelo menos 10 caracteres.</DialogDescription></DialogHeader><form className="form-grid" onSubmit={create}><label className="field full"><span>Nome completo</span><Input name="name" required /></label><label className="field full"><span>Usuário</span><Input name="username" placeholder="ex.: maria.silva" autoComplete="off" required /></label><label className="field"><span>Senha inicial</span><Input name="password" type="password" minLength={10} maxLength={128} autoComplete="new-password" required /></label><label className="field"><span>Perfil</span><Select value={role} onValueChange={setRole}><SelectTrigger className="w-full"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="operador">Operador</SelectItem><SelectItem value="administrador">Administrador</SelectItem></SelectContent></Select></label><DialogFooter className="full"><Button type="button" variant="outline" onClick={() => setCreateOpen(false)}>Cancelar</Button><Button disabled={busy}>{busy ? "Criando..." : "Criar usuário"}</Button></DialogFooter></form></DialogContent></Dialog>
       <Dialog open={!!resetTarget} onOpenChange={(open) => !open && setResetTarget(null)}><DialogContent><DialogHeader><DialogTitle>Redefinir senha</DialogTitle><DialogDescription>Defina uma senha com pelo menos 10 caracteres para {resetTarget?.name}. As sessões atuais serão encerradas.</DialogDescription></DialogHeader><form className="form-grid" onSubmit={reset}><label className="field full"><span>Nova senha</span><Input name="password" type="password" minLength={10} maxLength={128} required autoFocus /></label><DialogFooter className="full"><Button type="button" variant="outline" onClick={() => setResetTarget(null)}>Cancelar</Button><Button disabled={busy}><ShieldCheck />Salvar nova senha</Button></DialogFooter></form></DialogContent></Dialog>
       <Toaster richColors position="top-right" />
     </main>
