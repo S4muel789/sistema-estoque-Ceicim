@@ -53,6 +53,7 @@ export const inventoryMovements = pgTable("inventory_movements", {
   itemName: text("item_name").notNull(),
   action: text("action").notNull(),
   quantity: integer("quantity").notNull().default(0),
+  cabinetNumber: integer("cabinet_number"),
   sector: text("sector"),
   recipient: text("recipient"),
   notes: text("notes"),

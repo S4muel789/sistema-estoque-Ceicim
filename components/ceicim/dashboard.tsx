@@ -107,6 +107,7 @@ type Movement = {
   itemName: string;
   action: string;
   quantity: number;
+  cabinetNumber: number | null;
   sector: string | null;
   recipient: string | null;
   notes: string | null;
@@ -632,8 +633,8 @@ export default function Dashboard({ user }: { user: CurrentUser }) {
               <div className="section-actions"><div><p className="eyebrow">Rastreabilidade</p><h2>Histórico de movimentações</h2><p>Entradas, saídas, edições e arquivamentos registrados em ordem cronológica.</p></div></div>
               <article className="panel table-panel">
                 {pagedMovements.length ? (
-                  <><Table><TableHeader><TableRow><TableHead>Data e hora</TableHead><TableHead>Ação</TableHead><TableHead>Item</TableHead><TableHead className="text-center">Quantidade</TableHead><TableHead>Destino / responsável</TableHead><TableHead>Registrado por</TableHead><TableHead>Observação</TableHead></TableRow></TableHeader><TableBody>
-                    {pagedMovements.map((movement) => <TableRow key={movement.id}><TableCell>{formatDateTime(movement.createdAt)}</TableCell><TableCell><Badge className={`action-${movement.action}`}>{actionLabel(movement.action)}</Badge></TableCell><TableCell className="font-semibold">{movement.itemName}</TableCell><TableCell className="text-center font-semibold">{movement.quantity || "—"}</TableCell><TableCell>{movement.sector ? <span>{movement.sector}<small className="block text-muted-foreground">{movement.recipient}</small></span> : "—"}</TableCell><TableCell>{movement.actorName}</TableCell><TableCell className="max-w-[260px] whitespace-normal text-muted-foreground">{movement.notes || "—"}</TableCell></TableRow>)}
+                  <><Table><TableHeader><TableRow><TableHead>Data e hora</TableHead><TableHead>Ação</TableHead><TableHead>Item</TableHead><TableHead className="text-center">Armário</TableHead><TableHead className="text-center">Quantidade</TableHead><TableHead>Destino / responsável</TableHead><TableHead>Registrado por</TableHead><TableHead>Observação</TableHead></TableRow></TableHeader><TableBody>
+                    {pagedMovements.map((movement) => <TableRow key={movement.id}><TableCell>{formatDateTime(movement.createdAt)}</TableCell><TableCell><Badge className={`action-${movement.action}`}>{actionLabel(movement.action)}</Badge></TableCell><TableCell className="font-semibold">{movement.itemName}</TableCell><TableCell className="text-center">{movement.cabinetNumber == null ? "Não registrado" : movement.cabinetNumber === 0 ? "Sem armário" : `Nº ${movement.cabinetNumber}`}</TableCell><TableCell className="text-center font-semibold">{movement.quantity || "—"}</TableCell><TableCell>{movement.sector ? <span>{movement.sector}<small className="block text-muted-foreground">{movement.recipient}</small></span> : "—"}</TableCell><TableCell>{movement.actorName}</TableCell><TableCell className="max-w-[260px] whitespace-normal text-muted-foreground">{movement.notes || "—"}</TableCell></TableRow>)}
                   </TableBody></Table><div className="pagination"><Button variant="outline" size="sm" disabled={historyPage === 1} onClick={() => setHistoryPage((page) => page - 1)}><ChevronLeft />Anterior</Button><span>Página {historyPage} de {historyPages}</span><Button variant="outline" size="sm" disabled={historyPage === historyPages} onClick={() => setHistoryPage((page) => page + 1)}>Próxima<ChevronRight /></Button></div></>
                 ) : <EmptyState icon={History} title="Nenhuma movimentação registrada" text="As operações do estoque aparecerão aqui automaticamente." />}
               </article>
@@ -740,11 +741,14 @@ function MovementForm({ type, items, busy, onSubmit }: {
   busy: boolean;
   onSubmit: (event: FormEvent<HTMLFormElement>, type: "entrada" | "saida") => void;
 }) {
+  const [selectedItemId, setSelectedItemId] = useState("");
+  const selectedItem = items.find((item) => String(item.id) === selectedItemId);
   return (
     <article className="panel movement-card">
       <div className={`movement-heading ${type}`}><span>{type === "entrada" ? <ArrowDownToLine /> : <ArrowUpFromLine />}</span><div><h3>{type === "entrada" ? "Registrar entrada" : "Registrar saída"}</h3><p>{type === "entrada" ? "Aumente o saldo de um item existente." : "Informe também o destino e quem recebeu o material."}</p></div></div>
-      <form onSubmit={(event) => onSubmit(event, type)} className="form-grid">
-        <label className="field full"><span>Item do estoque</span><select name="itemId" className="native-select" required defaultValue=""><option value="" disabled>Selecione um item</option>{items.map((item) => <option key={item.id} value={item.id}>{item.name} — saldo {item.quantity}</option>)}</select></label>
+      <form onSubmit={(event) => onSubmit(event, type)} onReset={() => setSelectedItemId("")} className="form-grid">
+        <label className="field full"><span>Item do estoque</span><select name="itemId" className="native-select" required value={selectedItemId} onChange={(event) => setSelectedItemId(event.target.value)}><option value="" disabled>Selecione um item</option>{items.map((item) => <option key={item.id} value={item.id}>{item.name} — saldo {item.quantity}</option>)}</select></label>
+        {type === "saida" && <label className="field"><span>Local de retirada</span><Input value={selectedItem ? (selectedItem.cabinetNumber == null ? "Sem armário" : `Armário ${selectedItem.cabinetNumber}`) : "Selecione um item"} readOnly /></label>}
         <label className="field"><span>Quantidade</span><Input name="quantity" type="number" min="1" defaultValue="1" required /></label>
         {type === "saida" && <><label className="field"><span>Setor de destino</span><Input name="sector" placeholder="Ex.: Astronomia" required /></label><label className="field full"><span>Entregue para</span><Input name="recipient" placeholder="Nome de quem recebeu" required /></label></>}
         <label className="field full"><span>Observação</span><Textarea name="notes" placeholder="Opcional" /></label>

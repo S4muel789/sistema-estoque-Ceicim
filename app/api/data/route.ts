@@ -77,13 +77,13 @@ export async function POST(request: NextRequest) {
       if (existing) {
         await db.transaction(async (tx) => {
           await tx.update(inventoryItems).set({ quantity: sql`${inventoryItems.quantity} + ${quantity}`, minStock, updatedAt: now }).where(eq(inventoryItems.id, existing.id));
-          await tx.insert(inventoryMovements).values({ itemId: existing.id, itemName: existing.name, action: "entrada", quantity, notes: "Quantidade adicionada ao item já cadastrado", actorName: user.name, createdAt: now });
+          await tx.insert(inventoryMovements).values({ itemId: existing.id, itemName: existing.name, action: "entrada", quantity, cabinetNumber: existing.cabinetNumber ?? 0, notes: "Quantidade adicionada ao item já cadastrado", actorName: user.name, createdAt: now });
         });
         return Response.json({ message: "Quantidade somada ao item já existente.", merged: true });
       }
       const [item] = await db.transaction(async (tx) => {
         const [created] = await tx.insert(inventoryItems).values({ name, category, normalizedName, normalizedCategory, cabinetNumber, quantity, minStock, createdAt: now, updatedAt: now }).returning();
-        await tx.insert(inventoryMovements).values({ itemId: created.id, itemName: created.name, action: "cadastro", quantity, notes: "Item cadastrado no estoque", actorName: user.name, createdAt: now });
+        await tx.insert(inventoryMovements).values({ itemId: created.id, itemName: created.name, action: "cadastro", quantity, cabinetNumber: created.cabinetNumber ?? 0, notes: "Item cadastrado no estoque", actorName: user.name, createdAt: now });
         return [created];
       });
       return Response.json({ item, message: "Item cadastrado com sucesso." }, { status: 201 });
@@ -105,7 +105,7 @@ export async function POST(request: NextRequest) {
       if (duplicate && duplicate.id !== id) return invalid("Já existe um item ativo com o mesmo nome, categoria e armário.");
       await db.transaction(async (tx) => {
         await tx.update(inventoryItems).set({ name, category, normalizedName, normalizedCategory, cabinetNumber, minStock, updatedAt: now }).where(eq(inventoryItems.id, id));
-        await tx.insert(inventoryMovements).values({ itemId: id, itemName: name, action: "edicao", quantity: 0, notes: "Dados do item atualizados", actorName: user.name, createdAt: now });
+        await tx.insert(inventoryMovements).values({ itemId: id, itemName: name, action: "edicao", quantity: 0, cabinetNumber: cabinetNumber ?? 0, notes: "Dados do item atualizados", actorName: user.name, createdAt: now });
       });
       return Response.json({ message: "Item atualizado com sucesso." });
     }
@@ -130,7 +130,7 @@ export async function POST(request: NextRequest) {
             : and(eq(inventoryItems.id, id), isNull(inventoryItems.archivedAt), gte(inventoryItems.quantity, quantity)))
           .returning({ id: inventoryItems.id });
         if (!updated) return false;
-        await tx.insert(inventoryMovements).values({ itemId: id, itemName: item.name, action: type, quantity, sector: type === "saida" ? sector : null, recipient: type === "saida" ? recipient : null, notes: notes || null, actorName: user.name, createdAt: now });
+        await tx.insert(inventoryMovements).values({ itemId: id, itemName: item.name, action: type, quantity, cabinetNumber: item.cabinetNumber ?? 0, sector: type === "saida" ? sector : null, recipient: type === "saida" ? recipient : null, notes: notes || null, actorName: user.name, createdAt: now });
         return true;
       });
       if (!movementSaved) return invalid(`Saída bloqueada: o saldo disponível é ${item.quantity}. Atualize a página e tente novamente.`);
@@ -149,7 +149,7 @@ export async function POST(request: NextRequest) {
       }
       await db.transaction(async (tx) => {
         await tx.update(inventoryItems).set({ archivedAt: archiving ? now : null, updatedAt: now }).where(eq(inventoryItems.id, id));
-        await tx.insert(inventoryMovements).values({ itemId: id, itemName: item.name, action: archiving ? "arquivamento" : "desarquivamento", quantity: 0, actorName: user.name, createdAt: now });
+        await tx.insert(inventoryMovements).values({ itemId: id, itemName: item.name, action: archiving ? "arquivamento" : "desarquivamento", quantity: 0, cabinetNumber: item.cabinetNumber ?? 0, actorName: user.name, createdAt: now });
       });
       return Response.json({ message: archiving ? "Item arquivado." : "Item devolvido ao estoque ativo." });
     }
@@ -160,7 +160,7 @@ export async function POST(request: NextRequest) {
       if (item.quantity !== 0) return invalid("A exclusão só é permitida para itens com saldo zerado.");
       if (now - item.archivedAt < 21 * 24 * 60 * 60 * 1000) return invalid("A exclusão é liberada somente após 21 dias de arquivamento.");
       await db.transaction(async (tx) => {
-        await tx.insert(inventoryMovements).values({ itemId: id, itemName: item.name, action: "exclusao", quantity: 0, notes: "Item excluído definitivamente após 21 dias arquivado", actorName: user.name, createdAt: now });
+        await tx.insert(inventoryMovements).values({ itemId: id, itemName: item.name, action: "exclusao", quantity: 0, cabinetNumber: item.cabinetNumber ?? 0, notes: "Item excluído definitivamente após 21 dias arquivado", actorName: user.name, createdAt: now });
         await tx.delete(inventoryItems).where(eq(inventoryItems.id, id));
       });
       return Response.json({ message: "Item excluído definitivamente." });

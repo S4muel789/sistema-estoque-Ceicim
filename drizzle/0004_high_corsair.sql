@@ -1,0 +1,1 @@
+ALTER TABLE "inventory_movements" ADD COLUMN "cabinet_number" integer;
