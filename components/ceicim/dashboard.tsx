@@ -3,7 +3,6 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import {
   Archive,
-  ArrowDownToLine,
   ArrowRight,
   ArrowUpFromLine,
   Boxes,
@@ -83,7 +82,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { Toaster } from "@/components/ui/sonner";
 
@@ -144,7 +142,7 @@ const navItems: { value: View; label: string; icon: typeof LayoutDashboard }[] =
   { value: "inicio", label: "Visão geral", icon: LayoutDashboard },
   { value: "estoque", label: "Estoque", icon: Boxes },
   { value: "armarios", label: "Armários", icon: Warehouse },
-  { value: "movimentar", label: "Entradas e saídas", icon: ArrowDownToLine },
+  { value: "movimentar", label: "Registrar saída", icon: ArrowUpFromLine },
   { value: "historico", label: "Movimentações", icon: History },
   { value: "agenda", label: "Agenda de visitas", icon: CalendarDays },
   { value: "arquivados", label: "Arquivados", icon: Archive },
@@ -318,24 +316,23 @@ export default function Dashboard({ user }: { user: CurrentUser }) {
     });
     void register({
       name: "record_inventory_movement",
-      title: "Registrar movimentação de estoque",
-      description: "Registra uma entrada ou saída de um item existente no estoque do CEICIM.",
+      title: "Registrar saída de estoque",
+      description: "Registra a saída de um item existente no estoque do CEICIM.",
       inputSchema: {
         type: "object",
         properties: {
           itemId: { type: "integer" },
-          type: { type: "string", enum: ["entrada", "saida"] },
           quantity: { type: "integer", minimum: 1 },
           sector: { type: "string" },
           recipient: { type: "string" },
           notes: { type: "string" },
         },
-        required: ["itemId", "type", "quantity"],
+        required: ["itemId", "quantity", "sector", "recipient", "notes"],
         additionalProperties: false,
       },
       annotations: { readOnlyHint: false, untrustedContentHint: false },
       execute: async (input) => {
-        const result = await postAction({ action: "movement", ...input });
+        const result = await postAction({ action: "movement", type: "saida", ...input });
         await loadData();
         return { success: true, message: result.message };
       },
@@ -432,13 +429,13 @@ export default function Dashboard({ user }: { user: CurrentUser }) {
     void runAction({ action: "create_cabinet", cabinetNumber: form.get("cabinetNumber") }, () => setCabinetDialog(false));
   }
 
-  function submitMovement(event: FormEvent<HTMLFormElement>, type: "entrada" | "saida") {
+  function submitMovement(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const formElement = event.currentTarget;
     const form = new FormData(formElement);
     void runAction({
       action: "movement",
-      type,
+      type: "saida",
       itemId: form.get("itemId"),
       quantity: form.get("quantity"),
       sector: form.get("sector"),
@@ -619,12 +616,8 @@ export default function Dashboard({ user }: { user: CurrentUser }) {
 
           {view === "movimentar" && (
             <section className="view-stack narrow-view">
-              <div className="section-actions"><div><p className="eyebrow">Movimentação</p><h2>Entrada e saída de materiais</h2><p>Cada operação fica registrada no histórico.</p></div></div>
-              <Tabs defaultValue="entrada" className="movement-tabs">
-                <TabsList className="movement-tab-list"><TabsTrigger value="entrada"><ArrowDownToLine />Entrada</TabsTrigger><TabsTrigger value="saida"><ArrowUpFromLine />Saída</TabsTrigger></TabsList>
-                <TabsContent value="entrada"><MovementForm type="entrada" items={activeItems} busy={busy} onSubmit={submitMovement} /></TabsContent>
-                <TabsContent value="saida"><MovementForm type="saida" items={activeItems} busy={busy} onSubmit={submitMovement} /></TabsContent>
-              </Tabs>
+              <div className="section-actions"><div><p className="eyebrow">Movimentação</p><h2>Saída de materiais</h2><p>Todos os campos são obrigatórios e a operação fica registrada no histórico.</p></div></div>
+              <MovementForm items={activeItems} busy={busy} onSubmit={submitMovement} />
             </section>
           )}
 
@@ -735,24 +728,23 @@ export default function Dashboard({ user }: { user: CurrentUser }) {
   );
 }
 
-function MovementForm({ type, items, busy, onSubmit }: {
-  type: "entrada" | "saida";
+function MovementForm({ items, busy, onSubmit }: {
   items: Item[];
   busy: boolean;
-  onSubmit: (event: FormEvent<HTMLFormElement>, type: "entrada" | "saida") => void;
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
 }) {
   const [selectedItemId, setSelectedItemId] = useState("");
   const selectedItem = items.find((item) => String(item.id) === selectedItemId);
   return (
     <article className="panel movement-card">
-      <div className={`movement-heading ${type}`}><span>{type === "entrada" ? <ArrowDownToLine /> : <ArrowUpFromLine />}</span><div><h3>{type === "entrada" ? "Registrar entrada" : "Registrar saída"}</h3><p>{type === "entrada" ? "Aumente o saldo de um item existente." : "Informe também o destino e quem recebeu o material."}</p></div></div>
-      <form onSubmit={(event) => onSubmit(event, type)} onReset={() => setSelectedItemId("")} className="form-grid">
+      <div className="movement-heading saida"><span><ArrowUpFromLine /></span><div><h3>Registrar saída</h3><p>Informe o destino, quem recebeu e o motivo da retirada.</p></div></div>
+      <form onSubmit={onSubmit} onReset={() => setSelectedItemId("")} className="form-grid">
         <label className="field full"><span>Item do estoque</span><select name="itemId" className="native-select" required value={selectedItemId} onChange={(event) => setSelectedItemId(event.target.value)}><option value="" disabled>Selecione um item</option>{items.map((item) => <option key={item.id} value={item.id}>{item.name} — saldo {item.quantity}</option>)}</select></label>
-        {type === "saida" && <label className="field"><span>Local de retirada</span><Input value={selectedItem ? (selectedItem.cabinetNumber == null ? "Sem armário" : `Armário ${selectedItem.cabinetNumber}`) : "Selecione um item"} readOnly /></label>}
+        <label className="field"><span>Local de retirada</span><Input value={selectedItem ? (selectedItem.cabinetNumber == null ? "Sem armário" : `Armário ${selectedItem.cabinetNumber}`) : "Selecione um item"} readOnly /></label>
         <label className="field"><span>Quantidade</span><Input name="quantity" type="number" min="1" defaultValue="1" required /></label>
-        {type === "saida" && <><label className="field"><span>Setor de destino</span><Input name="sector" placeholder="Ex.: Astronomia" required /></label><label className="field full"><span>Entregue para</span><Input name="recipient" placeholder="Nome de quem recebeu" required /></label></>}
-        <label className="field full"><span>Observação</span><Textarea name="notes" placeholder="Opcional" /></label>
-        <div className="full form-submit"><Button type="submit" disabled={busy || items.length === 0}>{busy ? "Registrando..." : type === "entrada" ? "Confirmar entrada" : "Confirmar saída"}</Button>{items.length === 0 && <small>Cadastre um item antes de registrar movimentações.</small>}</div>
+        <label className="field"><span>Setor de destino</span><Input name="sector" placeholder="Ex.: Astronomia" required /></label><label className="field full"><span>Entregue para</span><Input name="recipient" placeholder="Nome de quem recebeu" required /></label>
+        <label className="field full"><span>Observação / motivo</span><Textarea name="notes" placeholder="Informe o motivo da retirada" required /></label>
+        <div className="full form-submit"><Button type="submit" disabled={busy || items.length === 0}>{busy ? "Registrando..." : "Confirmar saída"}</Button>{items.length === 0 && <small>Cadastre um item antes de registrar uma saída.</small>}</div>
       </form>
     </article>
   );

@@ -111,30 +111,24 @@ export async function POST(request: NextRequest) {
     }
 
     if (payload.action === "movement") {
-      const id = numberValue(payload.itemId); const type = payload.type === "saida" ? "saida" : "entrada"; const quantity = numberValue(payload.quantity);
+      if (payload.type !== "saida") return invalid("Somente saídas podem ser registradas nesta área.");
+      const id = numberValue(payload.itemId); const quantity = numberValue(payload.quantity);
       const sector = clean(payload.sector, 100); const recipient = clean(payload.recipient, 100); const notes = clean(payload.notes, 300);
       if (!id || quantity <= 0) return invalid("Selecione um item e informe uma quantidade válida.");
-      if (type === "saida" && (!sector || !recipient)) return invalid("Na saída, informe o setor e o nome de quem recebeu.");
+      if (!sector || !recipient || !notes) return invalid("Preencha o setor, o responsável e a observação da saída.");
       const [item] = await db.select().from(inventoryItems).where(eq(inventoryItems.id, id)).limit(1);
       if (!item || item.archivedAt) return invalid("Item ativo não encontrado.");
       const movementSaved = await db.transaction(async (tx) => {
         const [updated] = await tx.update(inventoryItems)
-          .set({
-            quantity: type === "entrada"
-              ? sql`${inventoryItems.quantity} + ${quantity}`
-              : sql`${inventoryItems.quantity} - ${quantity}`,
-            updatedAt: now,
-          })
-          .where(type === "entrada"
-            ? and(eq(inventoryItems.id, id), isNull(inventoryItems.archivedAt))
-            : and(eq(inventoryItems.id, id), isNull(inventoryItems.archivedAt), gte(inventoryItems.quantity, quantity)))
+          .set({ quantity: sql`${inventoryItems.quantity} - ${quantity}`, updatedAt: now })
+          .where(and(eq(inventoryItems.id, id), isNull(inventoryItems.archivedAt), gte(inventoryItems.quantity, quantity)))
           .returning({ id: inventoryItems.id });
         if (!updated) return false;
-        await tx.insert(inventoryMovements).values({ itemId: id, itemName: item.name, action: type, quantity, cabinetNumber: item.cabinetNumber ?? 0, sector: type === "saida" ? sector : null, recipient: type === "saida" ? recipient : null, notes: notes || null, actorName: user.name, createdAt: now });
+        await tx.insert(inventoryMovements).values({ itemId: id, itemName: item.name, action: "saida", quantity, cabinetNumber: item.cabinetNumber ?? 0, sector, recipient, notes, actorName: user.name, createdAt: now });
         return true;
       });
       if (!movementSaved) return invalid(`Saída bloqueada: o saldo disponível é ${item.quantity}. Atualize a página e tente novamente.`);
-      return Response.json({ message: type === "entrada" ? "Entrada registrada." : "Saída registrada." });
+      return Response.json({ message: "Saída registrada." });
     }
 
     if (payload.action === "archive_item" || payload.action === "unarchive_item") {
