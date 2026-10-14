@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useState } from "react";
-import { ArrowLeft, KeyRound, LoaderCircle, Plus, ShieldCheck } from "lucide-react";
+import { ArrowLeft, KeyRound, LoaderCircle, Plus, ShieldCheck, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -20,6 +20,7 @@ export default function UsersManager({ currentUserId }: { currentUserId: number 
   const [busy, setBusy] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [resetTarget, setResetTarget] = useState<ManagedUser | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<ManagedUser | null>(null);
   const [role, setRole] = useState("operador");
 
   const load = useCallback(async () => {
@@ -64,19 +65,25 @@ export default function UsersManager({ currentUserId }: { currentUserId: number 
     if (changed) setResetTarget(null);
   }
 
+  async function removeUser() {
+    const removed = await action({ action: "delete", id: deleteTarget?.id });
+    if (removed) setDeleteTarget(null);
+  }
+
   return (
     <main className="users-page">
       <header className="users-header"><div><Button variant="ghost" onClick={() => window.location.assign("/dashboard")}><ArrowLeft />Voltar ao painel</Button><p className="eyebrow">Administração</p><h1>Usuários e permissões</h1><p>Crie acessos individuais e escolha entre administrador e operador.</p></div><Button onClick={() => setCreateOpen(true)}><Plus />Novo usuário</Button></header>
       <section className="panel table-panel">
         {loading ? <div className="loading-line"><LoaderCircle className="spin" />Carregando usuários...</div> : (
           <Table><TableHeader><TableRow><TableHead>Nome</TableHead><TableHead>Usuário</TableHead><TableHead>Perfil</TableHead><TableHead>Situação</TableHead><TableHead className="text-right">Ações</TableHead></TableRow></TableHeader><TableBody>
-            {users.map((user) => <TableRow key={user.id}><TableCell className="font-semibold">{user.name}{user.id === currentUserId && <small className="block text-muted-foreground">Sua conta</small>}</TableCell><TableCell>@{user.username}</TableCell><TableCell><Select value={user.role} disabled={busy || user.id === currentUserId} onValueChange={(value) => void action({ action: "update", id: user.id, role: value, active: user.active })}><SelectTrigger className="w-[160px]"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="administrador">Administrador</SelectItem><SelectItem value="operador">Operador</SelectItem></SelectContent></Select></TableCell><TableCell><div className="status-switch"><Switch checked={user.active} disabled={busy || user.id === currentUserId} onCheckedChange={(active) => void action({ action: "update", id: user.id, role: user.role, active })}/><Badge className={user.active ? "badge-ok" : "action-arquivamento"}>{user.active ? "Ativo" : "Inativo"}</Badge></div></TableCell><TableCell className="text-right"><Button variant="outline" size="sm" onClick={() => setResetTarget(user)}><KeyRound />Redefinir senha</Button></TableCell></TableRow>)}
+            {users.map((user) => <TableRow key={user.id}><TableCell className="font-semibold">{user.name}{user.id === currentUserId && <small className="block text-muted-foreground">Sua conta</small>}</TableCell><TableCell>@{user.username}</TableCell><TableCell><Select value={user.role} disabled={busy || user.id === currentUserId} onValueChange={(value) => void action({ action: "update", id: user.id, role: value, active: user.active })}><SelectTrigger className="w-[160px]"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="administrador">Administrador</SelectItem><SelectItem value="operador">Operador</SelectItem></SelectContent></Select></TableCell><TableCell><div className="status-switch"><Switch checked={user.active} disabled={busy || user.id === currentUserId} onCheckedChange={(active) => void action({ action: "update", id: user.id, role: user.role, active })}/><Badge className={user.active ? "badge-ok" : "action-arquivamento"}>{user.active ? "Ativo" : "Inativo"}</Badge></div></TableCell><TableCell className="text-right"><div className="flex justify-end gap-2"><Button variant="outline" size="sm" onClick={() => setResetTarget(user)}><KeyRound />Redefinir senha</Button><Button variant="destructive" size="sm" disabled={busy || user.id === currentUserId} onClick={() => setDeleteTarget(user)}><Trash2 />Excluir</Button></div></TableCell></TableRow>)}
           </TableBody></Table>
         )}
       </section>
 
       <Dialog open={createOpen} onOpenChange={setCreateOpen}><DialogContent><DialogHeader><DialogTitle>Criar novo usuário</DialogTitle><DialogDescription>A pessoa entrará com o usuário e a senha definidos aqui. O nome de usuário deve ser único e a senha deve ter pelo menos 10 caracteres.</DialogDescription></DialogHeader><form className="form-grid" onSubmit={create}><label className="field full"><span>Nome completo</span><Input name="name" required /></label><label className="field full"><span>Usuário</span><Input name="username" placeholder="ex.: maria.silva" autoComplete="off" required /></label><label className="field"><span>Senha inicial</span><Input name="password" type="password" minLength={10} maxLength={128} autoComplete="new-password" required /></label><label className="field"><span>Perfil</span><Select value={role} onValueChange={setRole}><SelectTrigger className="w-full"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="operador">Operador</SelectItem><SelectItem value="administrador">Administrador</SelectItem></SelectContent></Select></label><DialogFooter className="full"><Button type="button" variant="outline" onClick={() => setCreateOpen(false)}>Cancelar</Button><Button disabled={busy}>{busy ? "Criando..." : "Criar usuário"}</Button></DialogFooter></form></DialogContent></Dialog>
       <Dialog open={!!resetTarget} onOpenChange={(open) => !open && setResetTarget(null)}><DialogContent><DialogHeader><DialogTitle>Redefinir senha</DialogTitle><DialogDescription>Defina uma senha com pelo menos 10 caracteres para {resetTarget?.name}. As sessões atuais serão encerradas.</DialogDescription></DialogHeader><form className="form-grid" onSubmit={reset}><label className="field full"><span>Nova senha</span><Input name="password" type="password" minLength={10} maxLength={128} required autoFocus /></label><DialogFooter className="full"><Button type="button" variant="outline" onClick={() => setResetTarget(null)}>Cancelar</Button><Button disabled={busy}><ShieldCheck />Salvar nova senha</Button></DialogFooter></form></DialogContent></Dialog>
+      <Dialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}><DialogContent><DialogHeader><DialogTitle>Excluir usuário?</DialogTitle><DialogDescription>Esta ação excluirá permanentemente o acesso de {deleteTarget?.name} (@{deleteTarget?.username}) e encerrará todas as sessões dessa conta. O histórico já registrado será preservado.</DialogDescription></DialogHeader><DialogFooter><Button type="button" variant="outline" disabled={busy} onClick={() => setDeleteTarget(null)}>Cancelar</Button><Button type="button" variant="destructive" disabled={busy} onClick={() => void removeUser()}><Trash2 />{busy ? "Excluindo..." : "Excluir usuário"}</Button></DialogFooter></Dialog>
       <Toaster richColors position="top-right" />
     </main>
   );
