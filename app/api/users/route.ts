@@ -63,5 +63,15 @@ export async function POST(request: NextRequest) {
     return Response.json({ message: "Senha redefinida. O usuário deverá entrar novamente." });
   }
 
+  if (payload.action === "delete") {
+    const id = Number(payload.id);
+    if (!Number.isInteger(id)) return Response.json({ error: "Usuário inválido." }, { status: 400 });
+    if (id === current.id) return Response.json({ error: "Você não pode excluir a própria conta." }, { status: 400 });
+    const [target] = await db.select({ id: users.id, name: users.name }).from(users).where(eq(users.id, id)).limit(1);
+    if (!target) return Response.json({ error: "Usuário não encontrado." }, { status: 404 });
+    await db.delete(users).where(eq(users.id, id));
+    return Response.json({ message: `Usuário “${target.name}” excluído com sucesso.` });
+  }
+
   return Response.json({ error: "Ação não reconhecida." }, { status: 400 });
 }
