@@ -12,7 +12,6 @@ import {
   ChevronRight,
   Clock3,
   FileDown,
-  History,
   LayoutDashboard,
   LogOut,
   Menu,
@@ -85,7 +84,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { Toaster } from "@/components/ui/sonner";
 
-type View = "inicio" | "estoque" | "armarios" | "movimentar" | "historico" | "agenda" | "arquivados";
+type View = "inicio" | "estoque" | "armarios" | "movimentar" | "agenda" | "arquivados";
 
 type Item = {
   id: number;
@@ -143,7 +142,6 @@ const navItems: { value: View; label: string; icon: typeof LayoutDashboard }[] =
   { value: "estoque", label: "Estoque", icon: Boxes },
   { value: "armarios", label: "Armários", icon: Warehouse },
   { value: "movimentar", label: "Registrar saída", icon: ArrowUpFromLine },
-  { value: "historico", label: "Movimentações", icon: History },
   { value: "agenda", label: "Agenda de visitas", icon: CalendarDays },
   { value: "arquivados", label: "Arquivados", icon: Archive },
 ];
@@ -180,19 +178,6 @@ function todayLabel() {
 
 function statusLabel(status: Visit["status"]) {
   return { agendada: "Agendada", realizada: "Realizada", cancelada: "Cancelada" }[status];
-}
-
-function actionLabel(action: string) {
-  const labels: Record<string, string> = {
-    cadastro: "Cadastro",
-    entrada: "Entrada",
-    saida: "Saída",
-    edicao: "Edição",
-    arquivamento: "Arquivamento",
-    desarquivamento: "Desarquivamento",
-    exclusao: "Exclusão",
-  };
-  return labels[action] ?? action;
 }
 
 async function postAction(payload: Record<string, unknown>) {
@@ -236,7 +221,7 @@ export default function Dashboard({ user }: { user: CurrentUser }) {
   const [busy, setBusy] = useState(false);
   const [loadError, setLoadError] = useState("");
   const [query, setQuery] = useState("");
-  const [historyPage, setHistoryPage] = useState(1);
+  const [cabinetQuery, setCabinetQuery] = useState("");
   const [itemDialog, setItemDialog] = useState(false);
   const [editingItem, setEditingItem] = useState<Item | null>(null);
   const [archiveTarget, setArchiveTarget] = useState<Item | null>(null);
@@ -349,6 +334,20 @@ export default function Dashboard({ user }: { user: CurrentUser }) {
     number,
     items: activeItems.filter((item) => item.cabinetNumber === number),
   })), [activeItems, cabinetNumbers]);
+  const normalizedCabinetQuery = cabinetQuery.trim().toLocaleLowerCase("pt-BR");
+  const visibleCabinetItems = useMemo(() => cabinetItems
+    .map(({ number, items }) => ({
+      number,
+      items: items.filter((item) =>
+        `${item.name} ${item.category}`.toLocaleLowerCase("pt-BR").includes(normalizedCabinetQuery)
+      ),
+    }))
+    .filter(({ items }) => !normalizedCabinetQuery || items.length > 0),
+  [cabinetItems, normalizedCabinetQuery]);
+  const visibleUnassignedItems = useMemo(() => unassignedItems.filter((item) =>
+    `${item.name} ${item.category}`.toLocaleLowerCase("pt-BR").includes(normalizedCabinetQuery)
+  ), [unassignedItems, normalizedCabinetQuery]);
+  const cabinetResultCount = visibleCabinetItems.reduce((total, cabinet) => total + cabinet.items.length, 0) + visibleUnassignedItems.length;
   const visitsByDate = useMemo(() => {
     const grouped = new Map<string, Visit[]>();
     for (const visit of data.visits) {
@@ -389,9 +388,6 @@ export default function Dashboard({ user }: { user: CurrentUser }) {
   }, [monthCursor]);
 
   const selectedVisits = visitsByDate.get(selectedDate) ?? [];
-  const historySize = 12;
-  const historyPages = Math.max(1, Math.ceil(data.movements.length / historySize));
-  const pagedMovements = data.movements.slice((historyPage - 1) * historySize, historyPage * historySize);
 
   async function runAction(payload: Record<string, unknown>, close?: () => void) {
     try {
@@ -601,36 +597,24 @@ export default function Dashboard({ user }: { user: CurrentUser }) {
 
           {view === "armarios" && (
             <section className="view-stack">
-              <div className="section-actions"><div><p className="eyebrow">Organização física</p><h2>Armários cadastrados</h2><p>Consulte os equipamentos de cada armário e adicione novos espaços quando necessário.</p></div>{isAdmin && <Button onClick={() => setCabinetDialog(true)}><PackagePlus />Novo armário</Button>}</div>
-              {unassignedItems.length > 0 && <div className="unassigned-banner"><PackageOpen /><div><strong>{unassignedItems.length} {unassignedItems.length === 1 ? "item sem armário" : "itens sem armário"}</strong><span>{unassignedItems.map((item) => item.name).join(", ")}.</span></div></div>}
-              <div className="cabinet-grid">
-                {cabinetItems.map(({ number, items }) => (
+              <div className="section-actions"><div><p className="eyebrow">Organização física</p><h2>Armários cadastrados</h2><p>Pesquise um equipamento para descobrir rapidamente onde ele está guardado.</p></div>{isAdmin && <Button onClick={() => setCabinetDialog(true)}><PackagePlus />Novo armário</Button>}</div>
+              <article className="panel table-panel"><div className="table-tools"><label className="search-box"><Search /><Input value={cabinetQuery} onChange={(event) => setCabinetQuery(event.target.value)} placeholder="Pesquisar item ou categoria nos armários" /></label><Badge variant="secondary">{cabinetResultCount} {cabinetResultCount === 1 ? "item encontrado" : "itens encontrados"}</Badge></div></article>
+              {visibleUnassignedItems.length > 0 && <div className="unassigned-banner"><PackageOpen /><div><strong>{visibleUnassignedItems.length} {visibleUnassignedItems.length === 1 ? "item sem armário" : "itens sem armário"}</strong><span>{visibleUnassignedItems.map((item) => item.name).join(", ")}.</span></div></div>}
+              {normalizedCabinetQuery && cabinetResultCount === 0 ? <EmptyState icon={Search} title="Item não encontrado" text="Tente pesquisar por outro nome ou categoria." /> : <div className="cabinet-grid">
+                {visibleCabinetItems.map(({ number, items }) => (
                   <article className="cabinet-card" key={number}>
                     <div className="cabinet-heading"><span><Warehouse /></span><div><small>ARMÁRIO</small><strong>{String(number).padStart(2, "0")}</strong></div><Badge variant="secondary">{items.length} {items.length === 1 ? "item" : "itens"}</Badge></div>
                     {items.length ? <div className="cabinet-list">{items.map((item) => <div key={item.id}><span><strong>{item.name}</strong><small>{item.category}</small></span><b>{item.quantity}</b></div>)}</div> : <p className="cabinet-empty">Nenhum item cadastrado neste armário.</p>}
                   </article>
                 ))}
-              </div>
+              </div>}
             </section>
           )}
 
           {view === "movimentar" && (
             <section className="view-stack narrow-view">
-              <div className="section-actions"><div><p className="eyebrow">Movimentação</p><h2>Saída de materiais</h2><p>Todos os campos são obrigatórios e a operação fica registrada no histórico.</p></div></div>
+              <div className="section-actions"><div><p className="eyebrow">Movimentação</p><h2>Saída de materiais</h2><p>Todos os campos são obrigatórios para manter o controle e a segurança do estoque.</p></div></div>
               <MovementForm items={activeItems} busy={busy} onSubmit={submitMovement} />
-            </section>
-          )}
-
-          {view === "historico" && (
-            <section className="view-stack">
-              <div className="section-actions"><div><p className="eyebrow">Rastreabilidade</p><h2>Histórico de movimentações</h2><p>Entradas, saídas, edições e arquivamentos registrados em ordem cronológica.</p></div></div>
-              <article className="panel table-panel">
-                {pagedMovements.length ? (
-                  <><Table><TableHeader><TableRow><TableHead>Data e hora</TableHead><TableHead>Ação</TableHead><TableHead>Item</TableHead><TableHead className="text-center">Armário</TableHead><TableHead className="text-center">Quantidade</TableHead><TableHead>Destino / responsável</TableHead><TableHead>Registrado por</TableHead><TableHead>Observação</TableHead></TableRow></TableHeader><TableBody>
-                    {pagedMovements.map((movement) => <TableRow key={movement.id}><TableCell>{formatDateTime(movement.createdAt)}</TableCell><TableCell><Badge className={`action-${movement.action}`}>{actionLabel(movement.action)}</Badge></TableCell><TableCell className="font-semibold">{movement.itemName}</TableCell><TableCell className="text-center">{movement.cabinetNumber == null ? "Não registrado" : movement.cabinetNumber === 0 ? "Sem armário" : `Nº ${movement.cabinetNumber}`}</TableCell><TableCell className="text-center font-semibold">{movement.quantity || "—"}</TableCell><TableCell>{movement.sector ? <span>{movement.sector}<small className="block text-muted-foreground">{movement.recipient}</small></span> : "—"}</TableCell><TableCell>{movement.actorName}</TableCell><TableCell className="max-w-[260px] whitespace-normal text-muted-foreground">{movement.notes || "—"}</TableCell></TableRow>)}
-                  </TableBody></Table><div className="pagination"><Button variant="outline" size="sm" disabled={historyPage === 1} onClick={() => setHistoryPage((page) => page - 1)}><ChevronLeft />Anterior</Button><span>Página {historyPage} de {historyPages}</span><Button variant="outline" size="sm" disabled={historyPage === historyPages} onClick={() => setHistoryPage((page) => page + 1)}>Próxima<ChevronRight /></Button></div></>
-                ) : <EmptyState icon={History} title="Nenhuma movimentação registrada" text="As operações do estoque aparecerão aqui automaticamente." />}
-              </article>
             </section>
           )}
 
