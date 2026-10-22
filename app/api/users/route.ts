@@ -27,13 +27,13 @@ export async function POST(request: NextRequest) {
     const password = String(payload.password ?? "");
     const role = payload.role === "administrador" ? "administrador" : "operador";
     if (!name) return Response.json({ error: "Informe o nome." }, { status: 400 });
-    if (!validUsername(username)) return Response.json({ error: "Usuário inválido. Use letras minúsculas, números, ponto, hífen ou sublinhado." }, { status: 400 });
+    if (!validUsername(username)) return Response.json({ error: "Usuário inválido. Informe pelo menos 3 letras ou números." }, { status: 400 });
     if (!validPassword(password)) return Response.json({ error: `A senha deve ter entre ${PASSWORD_MIN_LENGTH} e ${PASSWORD_MAX_LENGTH} caracteres.` }, { status: 400 });
     const [existingUser] = await db.select({ id: users.id }).from(users).where(eq(users.username, username)).limit(1);
     if (existingUser) return Response.json({ error: `O usuário “${username}” já existe. Escolha outro nome de usuário.` }, { status: 409 });
     try {
       await db.insert(users).values({ name, username, passwordHash: await hashPassword(password), role, createdAt: now, updatedAt: now });
-      return Response.json({ message: "Usuário criado com sucesso." }, { status: 201 });
+      return Response.json({ message: `Usuário criado com sucesso. Login: ${username}` }, { status: 201 });
     } catch (error) {
       const databaseError = error as Error & { cause?: { code?: string } };
       if (databaseError.cause?.code === "23505" || databaseError.message.includes("unique")) {
