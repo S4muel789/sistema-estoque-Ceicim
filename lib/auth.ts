@@ -19,7 +19,15 @@ function scrypt(password: string, salt: string) {
 }
 
 export function normalizeUsername(value: string) {
-  return value.trim().toLocaleLowerCase("pt-BR");
+  return value
+    .trim()
+    .toLocaleLowerCase("pt-BR")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, ".")
+    .replace(/[^a-z0-9._-]/g, "")
+    .replace(/[._-]{2,}/g, ".")
+    .replace(/^[._-]+|[._-]+$/g, "");
 }
 
 export function validUsername(value: string) {
