@@ -4,6 +4,7 @@ import { FormEvent, useEffect, useState } from "react";
 import { Boxes, KeyRound, LoaderCircle, ShieldCheck, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ceicim/password-input";
 
 export default function LoginForm() {
   const [needsSetup, setNeedsSetup] = useState(false);
@@ -56,10 +57,10 @@ export default function LoginForm() {
           <p>{needsSetup ? "Crie a primeira conta administrativa usando o código de ativação." : recovering ? "Confirme o usuário e o código administrativo para definir uma nova senha." : "Use seu usuário e sua senha próprios."}</p>
           {checking ? <div className="login-loading"><LoaderCircle className="spin" /> Verificando sistema...</div> : (
             <form onSubmit={submit} className="login-form">
-              {needsSetup && <><label className="field"><span>Nome completo</span><Input name="name" autoComplete="name" required /></label><label className="field"><span>Código de ativação</span><Input name="setupKey" type="password" required /></label></>}
+              {needsSetup && <><label className="field"><span>Nome completo</span><Input name="name" autoComplete="name" required /></label><label className="field"><span>Código de ativação</span><PasswordInput name="setupKey" autoComplete="one-time-code" required /></label></>}
               <label className="field"><span>Usuário</span><Input name="username" autoComplete="username" placeholder="ex.: samuel" required autoFocus={!needsSetup} /></label>
-              {recovering && <label className="field"><span>Código administrativo de recuperação</span><Input name="recoveryKey" type="password" autoComplete="one-time-code" required /></label>}
-              <label className="field"><span>{recovering ? "Nova senha" : "Senha"}</span><Input name={recovering ? "newPassword" : "password"} type="password" minLength={needsSetup || recovering ? 10 : undefined} maxLength={128} autoComplete={needsSetup || recovering ? "new-password" : "current-password"} required /></label>
+              {recovering && <label className="field"><span>Código administrativo de recuperação</span><PasswordInput name="recoveryKey" autoComplete="one-time-code" required /></label>}
+              <label className="field"><span>{recovering ? "Nova senha" : "Senha"}</span><PasswordInput name={recovering ? "newPassword" : "password"} minLength={needsSetup || recovering ? 10 : undefined} maxLength={128} autoComplete={needsSetup || recovering ? "new-password" : "current-password"} required /></label>
               {error && <div className="login-error">{error}</div>}
               <Button type="submit" size="lg" disabled={busy}>{busy ? <><LoaderCircle className="spin" /> Aguarde...</> : needsSetup ? "Criar conta e entrar" : recovering ? "Redefinir senha e entrar" : "Entrar"}</Button>
               {!needsSetup && <button type="button" className="login-recovery-link" onClick={() => { setRecovering((value) => !value); setError(""); }}>{recovering ? "Voltar ao login" : "Esqueci minha senha"}</button>}
