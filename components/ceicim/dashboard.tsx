@@ -413,7 +413,7 @@ export default function Dashboard({ user }: { user: CurrentUser }) {
     const form = new FormData(event.currentTarget);
     void runAction(
       editingItem
-        ? { action: "update_item", id: editingItem.id, name: form.get("name"), category: form.get("category"), cabinetNumber: form.get("cabinetNumber"), minStock: form.get("minStock") }
+        ? { action: "update_item", id: editingItem.id, name: form.get("name"), category: form.get("category"), cabinetNumber: form.get("cabinetNumber"), quantity: form.get("quantity"), minStock: form.get("minStock") }
         : { action: "create_item", name: form.get("name"), category: form.get("category"), cabinetNumber: form.get("cabinetNumber"), quantity: form.get("quantity"), minStock: form.get("minStock") },
       () => { setItemDialog(false); setEditingItem(null); }
     );
@@ -660,12 +660,12 @@ export default function Dashboard({ user }: { user: CurrentUser }) {
 
       <Dialog open={itemDialog} onOpenChange={(open) => { setItemDialog(open); if (!open) setEditingItem(null); }}>
         <DialogContent className="form-dialog">
-          <DialogHeader><DialogTitle>{editingItem ? "Editar item" : "Cadastrar novo item"}</DialogTitle><DialogDescription>{editingItem ? "Corrija os dados do item. O armário é opcional." : "O armário é opcional. Itens iguais, na mesma categoria e localização, terão a quantidade somada."}</DialogDescription></DialogHeader>
+          <DialogHeader><DialogTitle>{editingItem ? "Editar item" : "Cadastrar novo item"}</DialogTitle><DialogDescription>{editingItem ? "Corrija os dados e a quantidade do item. O armário é opcional." : "O armário é opcional. Itens iguais, na mesma categoria e localização, terão a quantidade somada."}</DialogDescription></DialogHeader>
           <form key={editingItem?.id ?? "new"} onSubmit={submitItem} className="form-grid">
             <label className="field full"><span>Nome do item</span><Input name="name" defaultValue={editingItem?.name} placeholder="Ex.: Cabo HDMI" required autoFocus /></label>
             <label className="field full"><span>Categoria</span><Input name="category" defaultValue={editingItem?.category} placeholder="Ex.: Cabos e adaptadores" required /></label>
             <label className="field"><span>Armário (opcional)</span><select name="cabinetNumber" className="native-select" defaultValue={editingItem?.cabinetNumber == null ? "" : String(editingItem.cabinetNumber)}><option value="">Sem armário</option>{cabinetNumbers.map((number) => <option key={number} value={number}>Armário {number}</option>)}</select></label>
-            {!editingItem && <label className="field"><span>Quantidade inicial</span><Input name="quantity" type="number" min="0" defaultValue="1" required /></label>}
+            <label className="field"><span>{editingItem ? "Quantidade atual" : "Quantidade inicial"}</span><Input name="quantity" type="number" min="0" step="1" defaultValue={editingItem?.quantity ?? 1} required />{editingItem && <small>Use este campo para corrigir uma quantidade cadastrada incorretamente.</small>}</label>
             <label className="field"><span>Estoque mínimo</span><Input name="minStock" type="number" min="2" defaultValue={editingItem?.minStock ?? 4} required /></label>
             <DialogFooter className="full"><Button type="button" variant="outline" onClick={() => setItemDialog(false)}>Cancelar</Button><Button type="submit" disabled={busy}>{busy ? "Salvando..." : editingItem ? "Salvar alterações" : "Cadastrar item"}</Button></DialogFooter>
           </form>
