@@ -1,6 +1,6 @@
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from "pdf-lib";
 
-export type PdfInventoryItem = { name: string; category: string; cabinetNumber: number | null; quantity: number; minStock: number };
+export type PdfInventoryItem = { name: string; category: string; cabinetNumber: number | null; quantity: number; consumable: boolean; minStock: number };
 
 const PAGE_WIDTH = 841.89;
 const PAGE_HEIGHT = 595.28;
@@ -35,7 +35,7 @@ export async function buildInventoryPdf(items: PdfInventoryItem[], generatedAt =
   const bold = await pdf.embedFont(StandardFonts.HelveticaBold);
   const sorted = [...items].sort((a, b) => (a.cabinetNumber ?? 99) - (b.cabinetNumber ?? 99) || `${a.category} ${a.name}`.localeCompare(`${b.category} ${b.name}`, "pt-BR"));
   const totalUnits = sorted.reduce((sum, item) => sum + item.quantity, 0);
-  const lowStock = sorted.filter((item) => item.quantity <= item.minStock).length;
+  const lowStock = sorted.filter((item) => item.consumable && item.quantity <= item.minStock).length;
   let pageNumber = 0;
   let page!: PDFPage;
   let y = 0;
@@ -71,12 +71,12 @@ export async function buildInventoryPdf(items: PdfInventoryItem[], generatedAt =
     sorted.forEach((item, index) => {
       if (y < 65) { footer(page); startPage(); }
       if (index % 2 === 1) page.drawRectangle({ x: MARGIN, y: y - 8, width: PAGE_WIDTH - MARGIN * 2, height: ROW_HEIGHT, color: rgb(0.97, 0.98, 0.99) });
-      const status = item.quantity <= item.minStock ? "Estoque baixo" : "Disponível";
+      const status = item.consumable ? (item.quantity <= item.minStock ? "Estoque baixo" : "Disponível") : "Não consumível";
       drawTextCell(page, item.category, columns[0].x, y, columns[0].width, regular, 8.5);
       drawTextCell(page, item.name, columns[1].x, y, columns[1].width, bold, 8.5);
       drawTextCell(page, item.cabinetNumber ? `Nº ${item.cabinetNumber}` : "—", columns[2].x, y, columns[2].width, regular, 8.5, "center");
       drawTextCell(page, String(item.quantity), columns[3].x, y, columns[3].width, bold, 8.5, "center");
-      drawTextCell(page, String(item.minStock), columns[4].x, y, columns[4].width, regular, 8.5, "center");
+      drawTextCell(page, item.consumable ? String(item.minStock) : "—", columns[4].x, y, columns[4].width, regular, 8.5, "center");
       drawTextCell(page, status, columns[5].x, y, columns[5].width, regular, 8.5);
       page.drawLine({ start: { x: MARGIN, y: y - 8 }, end: { x: PAGE_WIDTH - MARGIN, y: y - 8 }, color: rgb(0.89, 0.92, 0.94), thickness: 0.4 });
       y -= ROW_HEIGHT;
