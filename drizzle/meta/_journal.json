@@ -36,6 +36,13 @@
       "when": 1790606037103,
       "tag": "0004_high_corsair",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1793212920000,
+      "tag": "0005_consumable_inventory",
+      "breakpoints": true
     }
   ]
 }
