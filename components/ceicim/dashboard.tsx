@@ -92,6 +92,7 @@ type Item = {
   category: string;
   cabinetNumber: number | null;
   quantity: number;
+  consumable: boolean;
   minStock: number;
   archivedAt: number | null;
   createdAt: number;
@@ -224,6 +225,7 @@ export default function Dashboard({ user }: { user: CurrentUser }) {
   const [cabinetQuery, setCabinetQuery] = useState("");
   const [itemDialog, setItemDialog] = useState(false);
   const [editingItem, setEditingItem] = useState<Item | null>(null);
+  const [itemConsumable, setItemConsumable] = useState(true);
   const [archiveTarget, setArchiveTarget] = useState<Item | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Item | null>(null);
   const [cabinetDialog, setCabinetDialog] = useState(false);
@@ -327,7 +329,7 @@ export default function Dashboard({ user }: { user: CurrentUser }) {
 
   const activeItems = useMemo(() => data.items.filter((item) => !item.archivedAt), [data.items]);
   const archivedItems = useMemo(() => data.items.filter((item) => item.archivedAt), [data.items]);
-  const lowStockItems = useMemo(() => activeItems.filter((item) => item.quantity <= item.minStock), [activeItems]);
+  const lowStockItems = useMemo(() => activeItems.filter((item) => item.consumable && item.quantity <= item.minStock), [activeItems]);
   const unassignedItems = useMemo(() => activeItems.filter((item) => item.cabinetNumber == null), [activeItems]);
   const cabinetNumbers = useMemo(() => data.cabinets.map((cabinet) => cabinet.number), [data.cabinets]);
   const cabinetItems = useMemo(() => cabinetNumbers.map((number) => ({
@@ -413,8 +415,8 @@ export default function Dashboard({ user }: { user: CurrentUser }) {
     const form = new FormData(event.currentTarget);
     void runAction(
       editingItem
-        ? { action: "update_item", id: editingItem.id, name: form.get("name"), category: form.get("category"), cabinetNumber: form.get("cabinetNumber"), quantity: form.get("quantity"), minStock: form.get("minStock") }
-        : { action: "create_item", name: form.get("name"), category: form.get("category"), cabinetNumber: form.get("cabinetNumber"), quantity: form.get("quantity"), minStock: form.get("minStock") },
+        ? { action: "update_item", id: editingItem.id, name: form.get("name"), category: form.get("category"), cabinetNumber: form.get("cabinetNumber"), quantity: form.get("quantity"), consumable: form.get("consumable"), minStock: form.get("minStock") }
+        : { action: "create_item", name: form.get("name"), category: form.get("category"), cabinetNumber: form.get("cabinetNumber"), quantity: form.get("quantity"), consumable: form.get("consumable"), minStock: form.get("minStock") },
       () => { setItemDialog(false); setEditingItem(null); }
     );
   }
@@ -576,17 +578,17 @@ export default function Dashboard({ user }: { user: CurrentUser }) {
             <section className="view-stack">
               <div className="section-actions">
                 <div><p className="eyebrow">Controle de materiais</p><h2>Estoque ativo</h2><p>Itens com o mesmo nome, categoria e armário são somados automaticamente.</p></div>
-                <Button onClick={() => { setEditingItem(null); setItemDialog(true); }}><PackagePlus />Cadastrar item</Button>
+                <Button onClick={() => { setEditingItem(null); setItemConsumable(true); setItemDialog(true); }}><PackagePlus />Cadastrar item</Button>
               </div>
               <article className="panel table-panel">
                 <div className="table-tools"><label className="search-box"><Search /><Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar por nome ou categoria" /></label><Badge variant="secondary">{filteredItems.length} itens</Badge></div>
                 {loading ? <div className="loading-line"><RefreshCw className="spin" />Carregando estoque...</div> : filteredItems.length ? (
                   <Table>
-                    <TableHeader><TableRow><TableHead>Categoria</TableHead><TableHead>Item</TableHead><TableHead className="text-center">Armário</TableHead><TableHead className="text-center">Saldo</TableHead><TableHead className="text-center">Mínimo</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Ações</TableHead></TableRow></TableHeader>
+                    <TableHeader><TableRow><TableHead>Categoria</TableHead><TableHead>Item</TableHead><TableHead>Tipo</TableHead><TableHead className="text-center">Armário</TableHead><TableHead className="text-center">Saldo</TableHead><TableHead className="text-center">Mínimo</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Ações</TableHead></TableRow></TableHeader>
                     <TableBody>
                       {filteredItems.map((item) => {
-                        const low = item.quantity <= item.minStock;
-                        return <TableRow key={item.id}><TableCell><span className="category-pill">{item.category}</span></TableCell><TableCell className="font-semibold">{item.name}</TableCell><TableCell className="text-center"><span className="cabinet-pill">{item.cabinetNumber ? `Nº ${item.cabinetNumber}` : "Não definido"}</span></TableCell><TableCell className="text-center text-base font-bold">{item.quantity}</TableCell><TableCell className="text-center">{item.minStock}</TableCell><TableCell><Badge className={low ? "badge-low" : "badge-ok"}>{low ? "Estoque baixo" : "Disponível"}</Badge></TableCell><TableCell><div className="row-actions">{isAdmin ? <><Button variant="ghost" size="icon-sm" aria-label={`Editar ${item.name}`} onClick={() => { setEditingItem(item); setItemDialog(true); }}><Pencil /></Button><Button variant="ghost" size="icon-sm" disabled={item.quantity !== 0} title={item.quantity === 0 ? "Arquivar item" : "Zere o saldo antes de arquivar"} aria-label={`Arquivar ${item.name}`} onClick={() => setArchiveTarget(item)}><Archive /></Button></> : <span className="operator-note">Somente consulta</span>}</div></TableCell></TableRow>;
+                        const low = item.consumable && item.quantity <= item.minStock;
+                        return <TableRow key={item.id}><TableCell><span className="category-pill">{item.category}</span></TableCell><TableCell className="font-semibold">{item.name}</TableCell><TableCell><Badge variant="secondary">{item.consumable ? "Consumível" : "Não consumível"}</Badge></TableCell><TableCell className="text-center"><span className="cabinet-pill">{item.cabinetNumber ? `Nº ${item.cabinetNumber}` : "Não definido"}</span></TableCell><TableCell className="text-center text-base font-bold">{item.quantity}</TableCell><TableCell className="text-center">{item.consumable ? item.minStock : "—"}</TableCell><TableCell><Badge className={low ? "badge-low" : "badge-ok"}>{item.consumable ? (low ? "Estoque baixo" : "Disponível") : "Não consumível"}</Badge></TableCell><TableCell><div className="row-actions">{isAdmin ? <><Button variant="ghost" size="icon-sm" aria-label={`Editar ${item.name}`} onClick={() => { setEditingItem(item); setItemConsumable(item.consumable); setItemDialog(true); }}><Pencil /></Button><Button variant="ghost" size="icon-sm" disabled={item.quantity !== 0} title={item.quantity === 0 ? "Arquivar item" : "Zere o saldo antes de arquivar"} aria-label={`Arquivar ${item.name}`} onClick={() => setArchiveTarget(item)}><Archive /></Button></> : <span className="operator-note">Somente consulta</span>}</div></TableCell></TableRow>;
                       })}
                     </TableBody>
                   </Table>
@@ -604,7 +606,7 @@ export default function Dashboard({ user }: { user: CurrentUser }) {
                 {visibleCabinetItems.map(({ number, items }) => (
                   <article className="cabinet-card" key={number}>
                     <div className="cabinet-heading"><span><Warehouse /></span><div><small>ARMÁRIO</small><strong>{String(number).padStart(2, "0")}</strong></div><Badge variant="secondary">{items.length} {items.length === 1 ? "item" : "itens"}</Badge></div>
-                    {items.length ? <div className="cabinet-list">{items.map((item) => <div key={item.id}><span><strong>{item.name}</strong><small>{item.category}</small></span><b>{item.quantity}</b></div>)}</div> : <p className="cabinet-empty">Nenhum item cadastrado neste armário.</p>}
+                    {items.length ? <div className="cabinet-list">{items.map((item) => <div key={item.id}><span><strong>{item.name}</strong><small>{item.category} · {item.consumable ? "Consumível" : "Não consumível"}</small></span><b>{item.quantity}</b></div>)}</div> : <p className="cabinet-empty">Nenhum item cadastrado neste armário.</p>}
                   </article>
                 ))}
               </div>}
@@ -666,7 +668,8 @@ export default function Dashboard({ user }: { user: CurrentUser }) {
             <label className="field full"><span>Categoria</span><Input name="category" defaultValue={editingItem?.category} placeholder="Ex.: Cabos e adaptadores" required /></label>
             <label className="field"><span>Armário (opcional)</span><select name="cabinetNumber" className="native-select" defaultValue={editingItem?.cabinetNumber == null ? "" : String(editingItem.cabinetNumber)}><option value="">Sem armário</option>{cabinetNumbers.map((number) => <option key={number} value={number}>Armário {number}</option>)}</select></label>
             <label className="field"><span>{editingItem ? "Quantidade atual" : "Quantidade inicial"}</span><Input name="quantity" type="number" min="0" step="1" defaultValue={editingItem?.quantity ?? 1} required />{editingItem && <small>Use este campo para corrigir uma quantidade cadastrada incorretamente.</small>}</label>
-            <label className="field"><span>Estoque mínimo</span><Input name="minStock" type="number" min="2" defaultValue={editingItem?.minStock ?? 4} required /></label>
+            <label className="field"><span>Tipo do item</span><select name="consumable" className="native-select" value={String(itemConsumable)} onChange={(event) => setItemConsumable(event.target.value === "true")}><option value="true">Consumível</option><option value="false">Não consumível</option></select><small>Consumíveis usam alerta de estoque mínimo.</small></label>
+            <label className="field"><span>Estoque mínimo {itemConsumable ? "" : "(não se aplica)"}</span><Input name="minStock" type="number" min="1" step="1" defaultValue={editingItem?.consumable === false ? 4 : editingItem?.minStock ?? 4} disabled={!itemConsumable} required={itemConsumable} /></label>
             <DialogFooter className="full"><Button type="button" variant="outline" onClick={() => setItemDialog(false)}>Cancelar</Button><Button type="submit" disabled={busy}>{busy ? "Salvando..." : editingItem ? "Salvar alterações" : "Cadastrar item"}</Button></DialogFooter>
           </form>
         </DialogContent>
