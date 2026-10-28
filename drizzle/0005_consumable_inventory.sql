@@ -1,0 +1,1 @@
+ALTER TABLE "inventory_items" ADD COLUMN "consumable" boolean DEFAULT true NOT NULL;
