@@ -90,8 +90,8 @@ export async function POST(request: NextRequest) {
     }
 
     if (payload.action === "update_item") {
-      const id = numberValue(payload.id); const name = clean(payload.name, 100); const category = clean(payload.category, 80); const minStock = numberValue(payload.minStock); const cabinetNumber = optionalCabinetNumber(payload.cabinetNumber);
-      if (!id || !name || !category || minStock < 2) return invalid("Revise os dados do item e o estoque mínimo.");
+      const id = numberValue(payload.id); const name = clean(payload.name, 100); const category = clean(payload.category, 80); const quantity = numberValue(payload.quantity); const minStock = numberValue(payload.minStock); const cabinetNumber = optionalCabinetNumber(payload.cabinetNumber);
+      if (!id || !name || !category || !Number.isInteger(quantity) || quantity < 0 || minStock < 2) return invalid("Revise os dados, a quantidade e o estoque mínimo do item.");
       if (cabinetNumber !== null) {
         if (!Number.isInteger(cabinetNumber)) return invalid("Selecione um armário cadastrado ou deixe o item sem armário.");
         const [cabinet] = await db.select({ number: storageCabinets.number }).from(storageCabinets).where(eq(storageCabinets.number, cabinetNumber)).limit(1);
@@ -104,8 +104,9 @@ export async function POST(request: NextRequest) {
       const [duplicate] = await db.select({ id: inventoryItems.id }).from(inventoryItems).where(and(eq(inventoryItems.normalizedName, normalizedName), eq(inventoryItems.normalizedCategory, normalizedCategory), cabinetCondition, isNull(inventoryItems.archivedAt))).limit(1);
       if (duplicate && duplicate.id !== id) return invalid("Já existe um item ativo com o mesmo nome, categoria e armário.");
       await db.transaction(async (tx) => {
-        await tx.update(inventoryItems).set({ name, category, normalizedName, normalizedCategory, cabinetNumber, minStock, updatedAt: now }).where(eq(inventoryItems.id, id));
-        await tx.insert(inventoryMovements).values({ itemId: id, itemName: name, action: "edicao", quantity: 0, cabinetNumber: cabinetNumber ?? 0, notes: "Dados do item atualizados", actorName: user.name, createdAt: now });
+        await tx.update(inventoryItems).set({ name, category, normalizedName, normalizedCategory, cabinetNumber, quantity, minStock, updatedAt: now }).where(eq(inventoryItems.id, id));
+        const quantityChanged = item.quantity !== quantity;
+        await tx.insert(inventoryMovements).values({ itemId: id, itemName: name, action: "edicao", quantity: Math.abs(quantity - item.quantity), cabinetNumber: cabinetNumber ?? 0, notes: quantityChanged ? `Dados atualizados. Quantidade corrigida de ${item.quantity} para ${quantity}.` : "Dados do item atualizados", actorName: user.name, createdAt: now });
       });
       return Response.json({ message: "Item atualizado com sucesso." });
     }
