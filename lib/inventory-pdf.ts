@@ -1,6 +1,6 @@
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from "pdf-lib";
 
-export type PdfInventoryItem = { name: string; category: string; cabinetNumber: number | null; quantity: number; consumable: boolean; minStock: number };
+export type PdfInventoryItem = { name: string; category: string; cabinetNumber: number | null; quantity: number; unitType: "unidade" | "caixa" | "pacote"; consumable: boolean; minStock: number };
 
 const PAGE_WIDTH = 841.89;
 const PAGE_HEIGHT = 595.28;
@@ -21,6 +21,11 @@ function fit(text: string, font: PDFFont, size: number, maxWidth: number) {
   let result = normalized;
   while (result.length > 1 && font.widthOfTextAtSize(`${result}...`, size) > maxWidth) result = result.slice(0, -1);
   return `${result.trim()}...`;
+}
+
+function quantityLabel(quantity: number, unitType: PdfInventoryItem["unitType"]) {
+  const labels = unitType === "caixa" ? ["caixa", "caixas"] : unitType === "pacote" ? ["pacote", "pacotes"] : ["unidade", "unidades"];
+  return `${quantity} ${quantity === 1 ? labels[0] : labels[1]}`;
 }
 
 function drawTextCell(page: PDFPage, text: string, x: number, y: number, width: number, font: PDFFont, size: number, align: "left" | "center" = "left") {
@@ -75,7 +80,7 @@ export async function buildInventoryPdf(items: PdfInventoryItem[], generatedAt =
       drawTextCell(page, item.category, columns[0].x, y, columns[0].width, regular, 8.5);
       drawTextCell(page, item.name, columns[1].x, y, columns[1].width, bold, 8.5);
       drawTextCell(page, item.cabinetNumber ? `Nº ${item.cabinetNumber}` : "—", columns[2].x, y, columns[2].width, regular, 8.5, "center");
-      drawTextCell(page, String(item.quantity), columns[3].x, y, columns[3].width, bold, 8.5, "center");
+      drawTextCell(page, quantityLabel(item.quantity, item.unitType), columns[3].x, y, columns[3].width, bold, 8.5, "center");
       drawTextCell(page, item.consumable ? String(item.minStock) : "—", columns[4].x, y, columns[4].width, regular, 8.5, "center");
       drawTextCell(page, status, columns[5].x, y, columns[5].width, regular, 8.5);
       page.drawLine({ start: { x: MARGIN, y: y - 8 }, end: { x: PAGE_WIDTH - MARGIN, y: y - 8 }, color: rgb(0.89, 0.92, 0.94), thickness: 0.4 });
@@ -83,7 +88,7 @@ export async function buildInventoryPdf(items: PdfInventoryItem[], generatedAt =
     });
   }
   y = Math.max(y - 12, 52);
-  page.drawText(`Resumo: ${sorted.length} itens cadastrados | ${totalUnits} unidades | ${lowStock} com estoque baixo`, { x: MARGIN, y, size: 9, font: bold, color: rgb(0.04, 0.38, 0.44) });
+  page.drawText(`Resumo: ${sorted.length} itens cadastrados | ${totalUnits} na soma dos saldos | ${lowStock} com estoque baixo`, { x: MARGIN, y, size: 9, font: bold, color: rgb(0.04, 0.38, 0.44) });
   footer(page);
   pdf.setTitle("Estoque ativo - CEICIM");
   pdf.setAuthor("Sistema de Gestão do CEICIM");
