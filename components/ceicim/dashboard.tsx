@@ -11,7 +11,9 @@ import {
   ChevronLeft,
   ChevronRight,
   Clock3,
+  Download,
   FileDown,
+  FileText,
   LayoutDashboard,
   LogOut,
   Menu,
@@ -25,6 +27,7 @@ import {
   Sparkles,
   Trash2,
   TriangleAlert,
+  Upload,
   UserCog,
   Users,
   Warehouse,
@@ -84,7 +87,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { Toaster } from "@/components/ui/sonner";
 
-type View = "inicio" | "estoque" | "armarios" | "movimentar" | "agenda" | "arquivados";
+type View = "inicio" | "estoque" | "armarios" | "movimentar" | "agenda" | "documentos" | "arquivados";
 
 type Item = {
   id: number;
@@ -151,6 +154,7 @@ const navItems: { value: View; label: string; icon: typeof LayoutDashboard }[] =
   { value: "armarios", label: "Armários", icon: Warehouse },
   { value: "movimentar", label: "Registrar saída", icon: ArrowUpFromLine },
   { value: "agenda", label: "Agenda de visitas", icon: CalendarDays },
+  { value: "documentos", label: "Documentos", icon: FileText },
   { value: "arquivados", label: "Arquivados", icon: Archive },
 ];
 
@@ -651,6 +655,8 @@ export default function Dashboard({ user }: { user: CurrentUser }) {
             </section>
           )}
 
+          {view === "documentos" && <DocumentsView />}
+
           {view === "arquivados" && (
             <section className="view-stack">
               <div className="section-actions"><div><p className="eyebrow">Administração</p><h2>Itens arquivados</h2><p>Somente administradores podem excluir. O item precisa ter saldo zerado e permanecer arquivado por 21 dias; o histórico é preservado.</p></div></div>
@@ -720,6 +726,81 @@ export default function Dashboard({ user }: { user: CurrentUser }) {
 
       <Toaster richColors position="top-right" />
     </SidebarProvider>
+  );
+}
+
+type StoredDocument = { pathname: string; name: string; size: number; uploadedAt: string };
+
+function formatFileSize(bytes: number) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function DocumentsView() {
+  const [documents, setDocuments] = useState<StoredDocument[]>([]);
+  const [loadingDocuments, setLoadingDocuments] = useState(true);
+  const [uploading, setUploading] = useState(false);
+
+  const loadDocuments = useCallback(async () => {
+    setLoadingDocuments(true);
+    try {
+      const response = await fetch("/api/documents", { cache: "no-store" });
+      const result = await response.json() as { documents?: StoredDocument[]; error?: string };
+      if (response.status === 401) { window.location.assign("/"); return; }
+      if (!response.ok) throw new Error(result.error || "Não foi possível carregar os documentos.");
+      setDocuments(result.documents ?? []);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Não foi possível carregar os documentos.");
+    } finally {
+      setLoadingDocuments(false);
+    }
+  }, []);
+
+  useEffect(() => { void loadDocuments(); }, [loadDocuments]);
+
+  async function uploadDocument(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const data = new FormData(form);
+    setUploading(true);
+    try {
+      const response = await fetch("/api/documents", { method: "POST", body: data });
+      const result = await response.json() as { error?: string };
+      if (response.status === 401) { window.location.assign("/"); return; }
+      if (!response.ok) throw new Error(result.error || "Não foi possível enviar o documento.");
+      form.reset();
+      toast.success("Documento enviado com sucesso.");
+      await loadDocuments();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Não foi possível enviar o documento.");
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  return (
+    <section className="view-stack">
+      <div className="section-actions">
+        <div><p className="eyebrow">Apoio aos estagiários</p><h2>Documentos</h2><p>Guarde modelos e comprovantes úteis para justificar o ponto do estágio.</p></div>
+      </div>
+      <article className="panel">
+        <div className="panel-heading"><div><p className="eyebrow">Novo arquivo</p><h3>Enviar documento</h3></div></div>
+        <form onSubmit={uploadDocument} className="form-grid">
+          <label className="field full"><span>Selecione o arquivo</span><Input name="file" type="file" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx" required /><small>Formatos aceitos: PDF, JPG, PNG, DOC e DOCX. Máximo de 10 MB.</small></label>
+          <div className="full form-submit"><Button type="submit" disabled={uploading}>{uploading ? <><RefreshCw className="spin" />Enviando...</> : <><Upload />Enviar documento</>}</Button></div>
+        </form>
+      </article>
+      <article className="panel table-panel">
+        <div className="panel-heading"><div><p className="eyebrow">Arquivos disponíveis</p><h3>Documentos salvos</h3></div><Button variant="outline" size="sm" onClick={() => void loadDocuments()} disabled={loadingDocuments}><RefreshCw className={loadingDocuments ? "spin" : ""} />Atualizar</Button></div>
+        {loadingDocuments ? <div className="loading-line"><RefreshCw className="spin" />Carregando documentos...</div> : documents.length ? (
+          <Table>
+            <TableHeader><TableRow><TableHead>Documento</TableHead><TableHead>Tamanho</TableHead><TableHead>Enviado em</TableHead><TableHead className="text-right">Baixar</TableHead></TableRow></TableHeader>
+            <TableBody>{documents.map((document) => <TableRow key={document.pathname}><TableCell className="font-semibold"><span className="category-pill"><FileText /> {document.name}</span></TableCell><TableCell>{formatFileSize(document.size)}</TableCell><TableCell>{new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(new Date(document.uploadedAt))}</TableCell><TableCell className="text-right"><Button variant="outline" size="sm" onClick={() => window.location.assign(`/api/documents/download?pathname=${encodeURIComponent(document.pathname)}`)}><Download />Baixar</Button></TableCell></TableRow>)}</TableBody>
+          </Table>
+        ) : <EmptyState icon={FileText} title="Nenhum documento enviado" text="Envie o primeiro arquivo para deixá-lo disponível aos próximos estagiários." />}
+      </article>
+    </section>
   );
 }
 
