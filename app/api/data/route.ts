@@ -62,9 +62,10 @@ export async function POST(request: NextRequest) {
 
     if (payload.action === "create_item") {
       const name = clean(payload.name, 100); const category = clean(payload.category, 80);
-      const quantity = numberValue(payload.quantity); const consumable = payload.consumable !== "false" && payload.consumable !== false; const requestedMinStock = numberValue(payload.minStock); const minStock = consumable ? requestedMinStock : 0; const cabinetNumber = optionalCabinetNumber(payload.cabinetNumber);
+      const quantity = numberValue(payload.quantity); const unitType = clean(payload.unitType, 20); const consumable = payload.consumable !== "false" && payload.consumable !== false; const requestedMinStock = numberValue(payload.minStock); const minStock = consumable ? requestedMinStock : 0; const cabinetNumber = optionalCabinetNumber(payload.cabinetNumber);
       if (!name || !category) return invalid("Informe o nome e a categoria do item.");
       if (!Number.isInteger(quantity) || quantity < 0) return invalid("A quantidade inicial deve ser um número inteiro a partir de zero.");
+      if (!["unidade", "caixa", "pacote"].includes(unitType)) return invalid("Selecione Unidade, Caixa ou Pacote.");
       if (consumable && (!Number.isInteger(minStock) || minStock < 1)) return invalid("Informe um estoque mínimo de pelo menos 1 unidade para itens consumíveis.");
       if (cabinetNumber !== null) {
         if (!Number.isInteger(cabinetNumber)) return invalid("Selecione um armário cadastrado ou deixe o item sem armário.");
@@ -76,13 +77,13 @@ export async function POST(request: NextRequest) {
       const [existing] = await db.select().from(inventoryItems).where(and(eq(inventoryItems.normalizedName, normalizedName), eq(inventoryItems.normalizedCategory, normalizedCategory), cabinetCondition, isNull(inventoryItems.archivedAt))).limit(1);
       if (existing) {
         await db.transaction(async (tx) => {
-          await tx.update(inventoryItems).set({ quantity: sql`${inventoryItems.quantity} + ${quantity}`, consumable, minStock, updatedAt: now }).where(eq(inventoryItems.id, existing.id));
+          await tx.update(inventoryItems).set({ quantity: sql`${inventoryItems.quantity} + ${quantity}`, unitType, consumable, minStock, updatedAt: now }).where(eq(inventoryItems.id, existing.id));
           await tx.insert(inventoryMovements).values({ itemId: existing.id, itemName: existing.name, action: "entrada", quantity, cabinetNumber: existing.cabinetNumber ?? 0, notes: "Quantidade adicionada ao item já cadastrado", actorName: user.name, createdAt: now });
         });
         return Response.json({ message: "Quantidade somada ao item já existente.", merged: true });
       }
       const [item] = await db.transaction(async (tx) => {
-        const [created] = await tx.insert(inventoryItems).values({ name, category, normalizedName, normalizedCategory, cabinetNumber, quantity, consumable, minStock, createdAt: now, updatedAt: now }).returning();
+        const [created] = await tx.insert(inventoryItems).values({ name, category, normalizedName, normalizedCategory, cabinetNumber, quantity, unitType, consumable, minStock, createdAt: now, updatedAt: now }).returning();
         await tx.insert(inventoryMovements).values({ itemId: created.id, itemName: created.name, action: "cadastro", quantity, cabinetNumber: created.cabinetNumber ?? 0, notes: "Item cadastrado no estoque", actorName: user.name, createdAt: now });
         return [created];
       });
@@ -90,8 +91,8 @@ export async function POST(request: NextRequest) {
     }
 
     if (payload.action === "update_item") {
-      const id = numberValue(payload.id); const name = clean(payload.name, 100); const category = clean(payload.category, 80); const quantity = numberValue(payload.quantity); const consumable = payload.consumable !== "false" && payload.consumable !== false; const requestedMinStock = numberValue(payload.minStock); const minStock = consumable ? requestedMinStock : 0; const cabinetNumber = optionalCabinetNumber(payload.cabinetNumber);
-      if (!id || !name || !category || !Number.isInteger(quantity) || quantity < 0 || (consumable && (!Number.isInteger(minStock) || minStock < 1))) return invalid("Revise os dados, a quantidade e o estoque mínimo do item.");
+      const id = numberValue(payload.id); const name = clean(payload.name, 100); const category = clean(payload.category, 80); const quantity = numberValue(payload.quantity); const unitType = clean(payload.unitType, 20); const consumable = payload.consumable !== "false" && payload.consumable !== false; const requestedMinStock = numberValue(payload.minStock); const minStock = consumable ? requestedMinStock : 0; const cabinetNumber = optionalCabinetNumber(payload.cabinetNumber);
+      if (!id || !name || !category || !Number.isInteger(quantity) || quantity < 0 || !["unidade", "caixa", "pacote"].includes(unitType) || (consumable && (!Number.isInteger(minStock) || minStock < 1))) return invalid("Revise os dados, a unidade de controle, a quantidade e o estoque mínimo do item.");
       if (cabinetNumber !== null) {
         if (!Number.isInteger(cabinetNumber)) return invalid("Selecione um armário cadastrado ou deixe o item sem armário.");
         const [cabinet] = await db.select({ number: storageCabinets.number }).from(storageCabinets).where(eq(storageCabinets.number, cabinetNumber)).limit(1);
@@ -104,10 +105,11 @@ export async function POST(request: NextRequest) {
       const [duplicate] = await db.select({ id: inventoryItems.id }).from(inventoryItems).where(and(eq(inventoryItems.normalizedName, normalizedName), eq(inventoryItems.normalizedCategory, normalizedCategory), cabinetCondition, isNull(inventoryItems.archivedAt))).limit(1);
       if (duplicate && duplicate.id !== id) return invalid("Já existe um item ativo com o mesmo nome, categoria e armário.");
       await db.transaction(async (tx) => {
-        await tx.update(inventoryItems).set({ name, category, normalizedName, normalizedCategory, cabinetNumber, quantity, consumable, minStock, updatedAt: now }).where(eq(inventoryItems.id, id));
+        await tx.update(inventoryItems).set({ name, category, normalizedName, normalizedCategory, cabinetNumber, quantity, unitType, consumable, minStock, updatedAt: now }).where(eq(inventoryItems.id, id));
         const quantityChanged = item.quantity !== quantity;
         const typeChanged = item.consumable !== consumable;
-        const notes = [quantityChanged ? `Quantidade corrigida de ${item.quantity} para ${quantity}.` : "", typeChanged ? `Tipo alterado para ${consumable ? "consumível" : "não consumível"}.` : ""].filter(Boolean).join(" ") || "Dados do item atualizados";
+        const unitChanged = item.unitType !== unitType;
+        const notes = [quantityChanged ? `Quantidade corrigida de ${item.quantity} para ${quantity}.` : "", typeChanged ? `Tipo alterado para ${consumable ? "consumível" : "não consumível"}.` : "", unitChanged ? `Unidade de controle alterada para ${unitType}.` : ""].filter(Boolean).join(" ") || "Dados do item atualizados";
         await tx.insert(inventoryMovements).values({ itemId: id, itemName: name, action: "edicao", quantity: Math.abs(quantity - item.quantity), cabinetNumber: cabinetNumber ?? 0, notes, actorName: user.name, createdAt: now });
       });
       return Response.json({ message: "Item atualizado com sucesso." });
