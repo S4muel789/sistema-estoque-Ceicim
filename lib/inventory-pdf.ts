@@ -1,6 +1,6 @@
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from "pdf-lib";
 
-export type PdfInventoryItem = { name: string; category: string; cabinetNumber: number | null; quantity: number; unitType: "unidade" | "caixa" | "pacote"; consumable: boolean; minStock: number };
+export type PdfInventoryItem = { name: string; category: string; cabinetNumber: number | null; quantity: number; unitType: string; consumable: boolean; minStock: number };
 
 const PAGE_WIDTH = 841.89;
 const PAGE_HEIGHT = 595.28;
