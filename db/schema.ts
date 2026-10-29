@@ -34,6 +34,7 @@ export const inventoryItems = pgTable("inventory_items", {
   normalizedCategory: text("normalized_category").notNull(),
   cabinetNumber: integer("cabinet_number"),
   quantity: integer("quantity").notNull().default(0),
+  unitType: text("unit_type").notNull().default("unidade"),
   consumable: boolean("consumable").notNull().default(true),
   minStock: integer("min_stock").notNull().default(4),
   archivedAt: bigint("archived_at", { mode: "number" }),
