@@ -43,6 +43,13 @@
       "when": 1793212920000,
       "tag": "0005_consumable_inventory",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1793292000000,
+      "tag": "0006_inventory_unit_type",
+      "breakpoints": true
     }
   ]
 }
