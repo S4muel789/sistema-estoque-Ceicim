@@ -92,6 +92,7 @@ type Item = {
   category: string;
   cabinetNumber: number | null;
   quantity: number;
+  unitType: "unidade" | "caixa" | "pacote";
   consumable: boolean;
   minStock: number;
   archivedAt: number | null;
@@ -130,6 +131,12 @@ type Visit = {
 };
 
 type Cabinet = { number: number; createdAt: number };
+
+function quantityLabel(quantity: number, unitType: Item["unitType"]) {
+  const labels = unitType === "caixa" ? ["caixa", "caixas"] : unitType === "pacote" ? ["pacote", "pacotes"] : ["unidade", "unidades"];
+  return `${quantity} ${quantity === 1 ? labels[0] : labels[1]}`;
+}
+
 type DataSet = { items: Item[]; movements: Movement[]; visits: Visit[]; cabinets: Cabinet[] };
 
 const emptyData: DataSet = { items: [], movements: [], visits: [], cabinets: [] };
@@ -415,8 +422,8 @@ export default function Dashboard({ user }: { user: CurrentUser }) {
     const form = new FormData(event.currentTarget);
     void runAction(
       editingItem
-        ? { action: "update_item", id: editingItem.id, name: form.get("name"), category: form.get("category"), cabinetNumber: form.get("cabinetNumber"), quantity: form.get("quantity"), consumable: form.get("consumable"), minStock: form.get("minStock") }
-        : { action: "create_item", name: form.get("name"), category: form.get("category"), cabinetNumber: form.get("cabinetNumber"), quantity: form.get("quantity"), consumable: form.get("consumable"), minStock: form.get("minStock") },
+        ? { action: "update_item", id: editingItem.id, name: form.get("name"), category: form.get("category"), cabinetNumber: form.get("cabinetNumber"), quantity: form.get("quantity"), unitType: form.get("unitType"), consumable: form.get("consumable"), minStock: form.get("minStock") }
+        : { action: "create_item", name: form.get("name"), category: form.get("category"), cabinetNumber: form.get("cabinetNumber"), quantity: form.get("quantity"), unitType: form.get("unitType"), consumable: form.get("consumable"), minStock: form.get("minStock") },
       () => { setItemDialog(false); setEditingItem(null); }
     );
   }
@@ -588,7 +595,7 @@ export default function Dashboard({ user }: { user: CurrentUser }) {
                     <TableBody>
                       {filteredItems.map((item) => {
                         const low = item.consumable && item.quantity <= item.minStock;
-                        return <TableRow key={item.id}><TableCell><span className="category-pill">{item.category}</span></TableCell><TableCell className="font-semibold">{item.name}</TableCell><TableCell><Badge variant="secondary">{item.consumable ? "Consumível" : "Não consumível"}</Badge></TableCell><TableCell className="text-center"><span className="cabinet-pill">{item.cabinetNumber ? `Nº ${item.cabinetNumber}` : "Não definido"}</span></TableCell><TableCell className="text-center text-base font-bold">{item.quantity}</TableCell><TableCell className="text-center">{item.consumable ? item.minStock : "—"}</TableCell><TableCell><Badge className={low ? "badge-low" : "badge-ok"}>{item.consumable ? (low ? "Estoque baixo" : "Disponível") : "Não consumível"}</Badge></TableCell><TableCell><div className="row-actions">{isAdmin ? <><Button variant="ghost" size="icon-sm" aria-label={`Editar ${item.name}`} onClick={() => { setEditingItem(item); setItemConsumable(item.consumable); setItemDialog(true); }}><Pencil /></Button><Button variant="ghost" size="icon-sm" disabled={item.quantity !== 0} title={item.quantity === 0 ? "Arquivar item" : "Zere o saldo antes de arquivar"} aria-label={`Arquivar ${item.name}`} onClick={() => setArchiveTarget(item)}><Archive /></Button></> : <span className="operator-note">Somente consulta</span>}</div></TableCell></TableRow>;
+                        return <TableRow key={item.id}><TableCell><span className="category-pill">{item.category}</span></TableCell><TableCell className="font-semibold">{item.name}</TableCell><TableCell><Badge variant="secondary">{item.consumable ? "Consumível" : "Não consumível"}</Badge></TableCell><TableCell className="text-center"><span className="cabinet-pill">{item.cabinetNumber ? `Nº ${item.cabinetNumber}` : "Não definido"}</span></TableCell><TableCell className="text-center text-base font-bold">{quantityLabel(item.quantity, item.unitType)}</TableCell><TableCell className="text-center">{item.consumable ? item.minStock : "—"}</TableCell><TableCell><Badge className={low ? "badge-low" : "badge-ok"}>{item.consumable ? (low ? "Estoque baixo" : "Disponível") : "Não consumível"}</Badge></TableCell><TableCell><div className="row-actions">{isAdmin ? <><Button variant="ghost" size="icon-sm" aria-label={`Editar ${item.name}`} onClick={() => { setEditingItem(item); setItemConsumable(item.consumable); setItemDialog(true); }}><Pencil /></Button><Button variant="ghost" size="icon-sm" disabled={item.quantity !== 0} title={item.quantity === 0 ? "Arquivar item" : "Zere o saldo antes de arquivar"} aria-label={`Arquivar ${item.name}`} onClick={() => setArchiveTarget(item)}><Archive /></Button></> : <span className="operator-note">Somente consulta</span>}</div></TableCell></TableRow>;
                       })}
                     </TableBody>
                   </Table>
@@ -606,7 +613,7 @@ export default function Dashboard({ user }: { user: CurrentUser }) {
                 {visibleCabinetItems.map(({ number, items }) => (
                   <article className="cabinet-card" key={number}>
                     <div className="cabinet-heading"><span><Warehouse /></span><div><small>ARMÁRIO</small><strong>{String(number).padStart(2, "0")}</strong></div><Badge variant="secondary">{items.length} {items.length === 1 ? "item" : "itens"}</Badge></div>
-                    {items.length ? <div className="cabinet-list">{items.map((item) => <div key={item.id}><span><strong>{item.name}</strong><small>{item.category} · {item.consumable ? "Consumível" : "Não consumível"}</small></span><b>{item.quantity}</b></div>)}</div> : <p className="cabinet-empty">Nenhum item cadastrado neste armário.</p>}
+                    {items.length ? <div className="cabinet-list">{items.map((item) => <div key={item.id}><span><strong>{item.name}</strong><small>{item.category} · {item.consumable ? "Consumível" : "Não consumível"}</small></span><b>{quantityLabel(item.quantity, item.unitType)}</b></div>)}</div> : <p className="cabinet-empty">Nenhum item cadastrado neste armário.</p>}
                   </article>
                 ))}
               </div>}
@@ -650,7 +657,7 @@ export default function Dashboard({ user }: { user: CurrentUser }) {
               <article className="panel table-panel">
                 {archivedItems.length ? <Table><TableHeader><TableRow><TableHead>Item</TableHead><TableHead>Categoria</TableHead><TableHead className="text-center">Armário</TableHead><TableHead className="text-center">Saldo</TableHead><TableHead>Arquivado em</TableHead><TableHead className="text-right">Ações</TableHead></TableRow></TableHeader><TableBody>{archivedItems.map((item) => {
                   const canDelete = item.quantity === 0 && renderTime - (item.archivedAt ?? renderTime) >= 21 * 24 * 60 * 60 * 1000;
-                  return <TableRow key={item.id}><TableCell className="font-semibold">{item.name}</TableCell><TableCell>{item.category}</TableCell><TableCell className="text-center">{item.cabinetNumber ? `Nº ${item.cabinetNumber}` : "—"}</TableCell><TableCell className="text-center">{item.quantity}</TableCell><TableCell>{item.archivedAt ? formatDateTime(item.archivedAt) : "—"}</TableCell><TableCell><div className="row-actions">{isAdmin ? <><Button variant="outline" size="sm" onClick={() => void runAction({ action: "unarchive_item", id: item.id })}><RotateCcw />Restaurar</Button><Button variant="ghost" size="icon-sm" disabled={!canDelete} title={item.quantity !== 0 ? "A exclusão exige saldo zerado" : canDelete ? "Excluir definitivamente" : "Disponível após 21 dias"} onClick={() => setDeleteTarget(item)}><Trash2 /></Button></> : <span className="operator-note">Somente consulta</span>}</div></TableCell></TableRow>;
+                  return <TableRow key={item.id}><TableCell className="font-semibold">{item.name}</TableCell><TableCell>{item.category}</TableCell><TableCell className="text-center">{item.cabinetNumber ? `Nº ${item.cabinetNumber}` : "—"}</TableCell><TableCell className="text-center">{quantityLabel(item.quantity, item.unitType)}</TableCell><TableCell>{item.archivedAt ? formatDateTime(item.archivedAt) : "—"}</TableCell><TableCell><div className="row-actions">{isAdmin ? <><Button variant="outline" size="sm" onClick={() => void runAction({ action: "unarchive_item", id: item.id })}><RotateCcw />Restaurar</Button><Button variant="ghost" size="icon-sm" disabled={!canDelete} title={item.quantity !== 0 ? "A exclusão exige saldo zerado" : canDelete ? "Excluir definitivamente" : "Disponível após 21 dias"} onClick={() => setDeleteTarget(item)}><Trash2 /></Button></> : <span className="operator-note">Somente consulta</span>}</div></TableCell></TableRow>;
                 })}</TableBody></Table> : <EmptyState icon={Archive} title="Nenhum item arquivado" text="Os itens retirados do estoque ativo aparecerão aqui." />}
               </article>
             </section>
@@ -668,6 +675,7 @@ export default function Dashboard({ user }: { user: CurrentUser }) {
             <label className="field full"><span>Categoria</span><Input name="category" defaultValue={editingItem?.category} placeholder="Ex.: Cabos e adaptadores" required /></label>
             <label className="field"><span>Armário (opcional)</span><select name="cabinetNumber" className="native-select" defaultValue={editingItem?.cabinetNumber == null ? "" : String(editingItem.cabinetNumber)}><option value="">Sem armário</option>{cabinetNumbers.map((number) => <option key={number} value={number}>Armário {number}</option>)}</select></label>
             <label className="field"><span>{editingItem ? "Quantidade atual" : "Quantidade inicial"}</span><Input name="quantity" type="number" min="0" step="1" defaultValue={editingItem?.quantity ?? 1} required />{editingItem && <small>Use este campo para corrigir uma quantidade cadastrada incorretamente.</small>}</label>
+            <label className="field"><span>Unidade do saldo</span><select name="unitType" className="native-select" defaultValue={editingItem?.unitType ?? "unidade"} required><option value="unidade">Unidade</option><option value="caixa">Caixa</option><option value="pacote">Pacote</option></select><small>Define como o saldo será contado.</small></label>
             <label className="field"><span>Tipo do item</span><select name="consumable" className="native-select" value={String(itemConsumable)} onChange={(event) => setItemConsumable(event.target.value === "true")}><option value="true">Consumível</option><option value="false">Não consumível</option></select><small>Consumíveis usam alerta de estoque mínimo.</small></label>
             <label className="field"><span>Estoque mínimo {itemConsumable ? "" : "(não se aplica)"}</span><Input name="minStock" type="number" min="1" step="1" defaultValue={editingItem?.consumable === false ? 4 : editingItem?.minStock ?? 4} disabled={!itemConsumable} required={itemConsumable} /></label>
             <DialogFooter className="full"><Button type="button" variant="outline" onClick={() => setItemDialog(false)}>Cancelar</Button><Button type="submit" disabled={busy}>{busy ? "Salvando..." : editingItem ? "Salvar alterações" : "Cadastrar item"}</Button></DialogFooter>
@@ -726,9 +734,9 @@ function MovementForm({ items, busy, onSubmit }: {
     <article className="panel movement-card">
       <div className="movement-heading saida"><span><ArrowUpFromLine /></span><div><h3>Registrar saída</h3><p>Informe o destino, quem recebeu e o motivo da retirada.</p></div></div>
       <form onSubmit={onSubmit} onReset={() => setSelectedItemId("")} className="form-grid">
-        <label className="field full"><span>Item do estoque</span><select name="itemId" className="native-select" required value={selectedItemId} onChange={(event) => setSelectedItemId(event.target.value)}><option value="" disabled>Selecione um item</option>{items.map((item) => <option key={item.id} value={item.id}>{item.name} — saldo {item.quantity}</option>)}</select></label>
+        <label className="field full"><span>Item do estoque</span><select name="itemId" className="native-select" required value={selectedItemId} onChange={(event) => setSelectedItemId(event.target.value)}><option value="" disabled>Selecione um item</option>{items.map((item) => <option key={item.id} value={item.id}>{item.name} — saldo {quantityLabel(item.quantity, item.unitType)}</option>)}</select></label>
         <label className="field"><span>Local de retirada</span><Input value={selectedItem ? (selectedItem.cabinetNumber == null ? "Sem armário" : `Armário ${selectedItem.cabinetNumber}`) : "Selecione um item"} readOnly /></label>
-        <label className="field"><span>Quantidade</span><Input name="quantity" type="number" min="1" defaultValue="1" required /></label>
+        <label className="field"><span>Quantidade {selectedItem ? `em ${selectedItem.unitType === "caixa" ? "caixas" : selectedItem.unitType === "pacote" ? "pacotes" : "unidades"}` : ""}</span><Input name="quantity" type="number" min="1" defaultValue="1" required /></label>
         <label className="field"><span>Setor de destino</span><Input name="sector" placeholder="Ex.: Astronomia" required /></label><label className="field full"><span>Entregue para</span><Input name="recipient" placeholder="Nome de quem recebeu" required /></label>
         <label className="field full"><span>Observação / motivo</span><Textarea name="notes" placeholder="Informe o motivo da retirada" required /></label>
         <div className="full form-submit"><Button type="submit" disabled={busy || items.length === 0}>{busy ? "Registrando..." : "Confirmar saída"}</Button>{items.length === 0 && <small>Cadastre um item antes de registrar uma saída.</small>}</div>
